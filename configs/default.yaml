@@ -56,6 +56,9 @@ output:
   he_native_px_um: auto       # auto -> H&E pixel size estimated by the affine fit
   interpolation: bicubic
 
+figures:
+  save_fullres_previews: false   # stage 06: full-resolution Fig. 1 panels + composite (0.2-1 GB/sample); off by default
+
 qc:
   n_auto_rois: 8
   roi_size_um: 700

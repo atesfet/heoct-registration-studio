@@ -261,7 +261,7 @@ class Job:
         threading.Thread(target=self._run, args=(req, out_root), daemon=True).start()
 
     def _run(self, req, out_root):
-        stages = req.get("stages") or ["01", "02", "03", "04", "05", "06"]
+        stages = req.get("stages") or ["01", "02", "03", "04", "05"]
         defaults = yaml.safe_load((APP / "configs" / "default.yaml").read_text())
         overrides = req.get("overrides") or {}
         try:

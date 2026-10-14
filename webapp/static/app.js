@@ -40,6 +40,7 @@ async function loadSystem() {
   const R = s.defaults.registration || {}, O = s.defaults.oct || {};
   $("rot_step_deg").value = R.rot_step_deg ?? 10; $("allow_flip").value = String(R.allow_flip ?? true);
   if (R.he_px_um_search) { $("px_lo").value = R.he_px_um_search[0]; $("px_hi").value = R.he_px_um_search[1]; }
+  $("save_fullres").checked = !!(s.defaults.figures || {}).save_fullres_previews;
   $("max_dark_frac").value = O.max_dark_frac ?? 0.35; $("body_open_um").value = O.body_open_um ?? 240;
   if (!$("output_root").value && s.defaults.output_root) $("output_root").value = s.defaults.output_root;
   if (!$("results_root").value) $("results_root").value = $("output_root").value;
@@ -115,16 +116,21 @@ function buildOverrides() {
     registration: { ...PRESETS[$("preset").value], allow_flip: $("allow_flip").value === "true", rot_step_deg: num("rot_step_deg"),
                     he_px_um_search: [num("px_lo"), num("px_hi")] },
     oct: { max_dark_frac: num("max_dark_frac"), body_open_um: num("body_open_um") },
+    figures: { save_fullres_previews: $("save_fullres").checked },
   };
 }
-function stages() { return [...document.querySelectorAll(".stage:checked")].map((c) => c.value); }
+function stages() {
+  const st = [...document.querySelectorAll(".stage:checked")].map((c) => c.value);
+  return $("save_fullres").checked ? [...st, "06"] : st;
+}
 function formState() {
   const st = {}; for (const id of ["preset", "allow_flip", "rot_step_deg", "px_lo", "px_hi", "max_dark_frac", "body_open_um", "yaml_overrides", ...SAVE_KEYS]) st[id] = $(id).value;
-  st.stages = stages(); return st;
+  st.stages = [...document.querySelectorAll(".stage:checked")].map((c) => c.value); st.save_fullres = $("save_fullres").checked; return st;
 }
 function applyState(st) {
   for (const [k, v] of Object.entries(st)) if ($(k) && typeof v !== "object") $(k).value = v;
   if (st.stages) document.querySelectorAll(".stage").forEach((c) => (c.checked = st.stages.includes(c.value)));
+  $("save_fullres").checked = !!st.save_fullres;
   updatePath(); save();
 }
 

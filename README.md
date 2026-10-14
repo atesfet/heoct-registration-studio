@@ -22,7 +22,7 @@ conda activate reg_env && python launch.py [--port 8780] [--no-browser]
    The browser tags folders as **H&E + OCT pair** / **registered** and shows file sizes.
 2. **Output** – output root + sample name → `<root>/<sample>/` (stages `01…06` and the final `output/`).
 3. **Parameters** – deformation preset (fast / standard / accurate / affine-only), mirror search, rotation step, H&E pixel-size range,
-   OCT tissue-mask controls, stage selection; *Advanced* takes raw YAML merged over `configs/default.yaml`. Save/Load config.
+   OCT tissue-mask controls, stage selection, **Save full-resolution previews** (stage 06, off by default); *Advanced* takes raw YAML merged over `configs/default.yaml`. Save/Load config.
 4. **Run** – progress bar per sample and stage, live log, Cancel. Each run writes `<root>/<sample>/run_config.yaml`.
 5. **Results & viewer** – table of registered samples with accuracy; **View** opens the interactive viewer:
    * modes: blend (opacity), swipe (slider or Shift-drag), checkerboard A/B (tile size, invert), flicker, false colour, side by side, H&E, OCT

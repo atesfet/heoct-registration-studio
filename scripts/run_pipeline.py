@@ -12,7 +12,7 @@ Stages (outputs under <output_root>/<sample_id>/, output_root set in configs/def
     03_registration init search -> affine -> deformable (OCT is fixed, H&E is warped onto it)
     04_qc           overlays, checkerboards, zoomed ROI panels, landmark TRE, residual map, HTML report
     05 -> output/   final registered OCT / H&E / common mask TIFFs + single metadata JSON
-    06_figures      full-resolution Fig. 1 panels (a-g) + Fig. 2 views (h-j) + composite; collected in <output_root>/figures/
+    06_figures      optional (figures.save_fullres_previews, default off): full-resolution Fig. 1 panels (a-g) + Fig. 2 views (h-j) + composite
 """
 import argparse
 import json
@@ -162,7 +162,8 @@ if __name__ == "__main__":
     g.add_argument("--config", help="path to a per-sample yaml")
     g.add_argument("--sample", help="sample id (configs/samples/<id>.yaml)")
     g.add_argument("--all", action="store_true", help="run every configs/samples/*.yaml")
-    ap.add_argument("--stages", nargs="+", default=["01", "02", "03", "04", "05", "06"])
+    ap.add_argument("--stages", nargs="+", default=None,
+                    help="default: 01-05, plus 06 when figures.save_fullres_previews is true")
     ap.add_argument("--default", help="default config to merge under the sample config (default: configs/default.yaml)")
     a = ap.parse_args()
     cdir = Path(__file__).resolve().parents[1] / "configs" / "samples"
@@ -171,5 +172,7 @@ if __name__ == "__main__":
     for p in paths:
         cfg = io.load_config(p, a.default or (Path(__file__).resolve().parents[1] / "configs" / "default.yaml"))
         print(f"===== {cfg['sample_id']} =====", flush=True)
-        for s in a.stages:
+        run_stages = a.stages or (["01", "02", "03", "04", "05"]
+                                  + (["06"] if cfg.get("figures", {}).get("save_fullres_previews", False) else []))
+        for s in run_stages:
             t0 = time.time(); stages[s](cfg); print(f"[{cfg['sample_id']}] stage {s} {time.time() - t0:.0f}s", flush=True)

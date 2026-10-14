@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registration Studio</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232563eb'/><rect x='6' y='6' width='12' height='12' fill='white' opacity='.9'/><rect x='14' y='14' width='12' height='12' fill='%23f0abfc' opacity='.9'/></svg>">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">◪</span>
+    <div>
+      <h1>H&amp;E ↔ OCT Registration Studio</h1>
+      <p class="sub">Background removal · stain normalisation · mirror/rotation search · deformable registration onto the OCT grid · QC · <span id="version">v1</span></p>
+    </div>
+  </div>
+  <div id="sysbadges" class="badges"></div>
+</header>
+
+<main>
+  <!-- 1. INPUT ------------------------------------------------------------ -->
+  <section class="card" id="card-input">
+    <h2><span class="step">1</span> Input images</h2>
+    <p class="hint">Pick a <b>sample folder</b> (the H&amp;E <code>*4x*.tif</code> and the OCT <code>*recon_xy_topk*.tif</code> are detected automatically) or pick each file. OCT is the fixed image; H&amp;E is warped onto it.</p>
+    <div class="tabs" id="input-tabs">
+      <button class="tab active" data-tab="single">Single sample</button>
+      <button class="tab" data-tab="batch">Batch (data root)</button>
+    </div>
+    <div id="tab-single">
+      <label>Sample folder
+        <div class="row"><input id="sample_folder" type="text" placeholder="/path/to/data/sample_xx" spellcheck="false">
+          <button class="secondary" data-browse="sample_folder" data-mode="dir">Browse…</button>
+          <button id="btn-detect">Detect</button></div>
+      </label>
+      <div class="form2" style="margin-top:10px">
+        <label>H&amp;E image (moving)
+          <div class="row"><input id="he_path" type="text" spellcheck="false" placeholder="…/S1s1_4x.tif"><button class="secondary" data-browse="he_path" data-mode="file">Browse…</button></div>
+        </label>
+        <label>OCT en-face image (fixed)
+          <div class="row"><input id="oct_path" type="text" spellcheck="false" placeholder="…/Sample_recon_xy_topk.tif"><button class="secondary" data-browse="oct_path" data-mode="file">Browse…</button></div>
+        </label>
+      </div>
+      <div class="row" style="margin-top:8px"><button id="btn-inspect">Inspect</button><span class="muted" id="inspect-status"></span></div>
+      <div id="inspect-out" class="hidden">
+        <div class="grid4" id="scan-summary"></div>
+        <div class="thumbs"><figure><img id="he-thumb"><figcaption>H&amp;E</figcaption></figure><figure><img id="oct-thumb"><figcaption>OCT</figcaption></figure></div>
+      </div>
+    </div>
+    <div id="tab-batch" class="hidden">
+      <label>Data root (one sub-folder per sample)
+        <div class="row"><input id="data_root" type="text" spellcheck="false" placeholder="/path/to/data_12um">
+          <button class="secondary" data-browse="data_root" data-mode="dir">Browse…</button>
+          <button id="btn-scan">Scan</button></div>
+      </label>
+      <table class="tbl" id="batch-table"><thead><tr><th><input type="checkbox" id="batch-all" checked></th><th>sample</th><th>H&amp;E</th><th>OCT</th></tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- 2. OUTPUT ----------------------------------------------------------- -->
+  <section class="card" id="card-output">
+    <h2><span class="step">2</span> Output</h2>
+    <div class="form2">
+      <label>Output root
+        <div class="row"><input id="output_root" type="text" spellcheck="false"><button class="secondary" data-browse="output_root" data-mode="dir">Browse…</button></div>
+      </label>
+      <label>Sample name (folder name)
+        <input id="sample_id" type="text" spellcheck="false" placeholder="sample_xx">
+      </label>
+    </div>
+    <p class="hint">Results are written to <code id="final-path">…</code> (stages <code>01_he_preproc … 06_figures</code> and the final <code>output/</code> folder with registered OCT, H&amp;E, common mask and one metadata file).</p>
+  </section>
+
+  <!-- 3. PARAMETERS ------------------------------------------------------- -->
+  <section class="card" id="card-params">
+    <h2><span class="step">3</span> Parameters</h2>
+    <div class="form3">
+      <label>Deformation preset
+        <select id="preset">
+          <option value="fast">fast (affine + 3 levels, ~2× faster)</option>
+          <option value="standard" selected>standard (validated default)</option>
+          <option value="accurate">accurate (extra 25 µm level, more iterations)</option>
+          <option value="affine">affine only (no deformation)</option>
+        </select>
+      </label>
+      <label>Orientation search
+        <select id="allow_flip"><option value="true" selected>rotation + mirror (recommended)</option><option value="false">rotation only</option></select>
+      </label>
+      <label>Rotation step (°)
+        <input id="rot_step_deg" type="number" min="2" max="30" step="1" value="10">
+      </label>
+      <label>H&amp;E pixel size search (µm)
+        <div class="row"><input id="px_lo" type="number" step="0.05" value="1.3"><span>–</span><input id="px_hi" type="number" step="0.05" value="2.3"></div>
+      </label>
+      <label>OCT tissue: max local dark fraction
+        <input id="max_dark_frac" type="number" min="0.05" max="0.8" step="0.05" value="0.35">
+      </label>
+      <label>OCT tissue: cut bridges narrower than (µm)
+        <input id="body_open_um" type="number" min="40" max="2000" step="20" value="240">
+      </label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <span class="muted">Stages:</span>
+      <label class="check"><input type="checkbox" class="stage" value="01" checked>01 H&amp;E prep</label>
+      <label class="check"><input type="checkbox" class="stage" value="02" checked>02 OCT prep</label>
+      <label class="check"><input type="checkbox" class="stage" value="03" checked>03 register</label>
+      <label class="check"><input type="checkbox" class="stage" value="04" checked>04 QC</label>
+      <label class="check"><input type="checkbox" class="stage" value="05" checked>05 output</label>
+      <label class="check"><input type="checkbox" class="stage" value="06" checked>06 full-res figures</label>
+    </div>
+    <details>
+      <summary>Advanced: raw config overrides (YAML, merged over <code>configs/default.yaml</code>)</summary>
+      <p class="hint">Anything here wins over the form. Example: <code>registration: {deform_lambda: [1, 0.5, 0.25, 0.1, 0.05]}</code>. The full default config is shown below for reference.</p>
+      <textarea id="yaml_overrides" rows="6" spellcheck="false" placeholder="oct:&#10;  dark_db: 4.0"></textarea>
+      <pre class="cfg" id="default-cfg"></pre>
+    </details>
+    <div class="row" style="margin-top:12px">
+      <button class="secondary" id="btn-save-cfg">Save config…</button>
+      <label class="filebtn">Load config…<input type="file" id="load-cfg" accept=".json,.yaml,.yml"></label>
+    </div>
+  </section>
+
+  <!-- 4. RUN -------------------------------------------------------------- -->
+  <section class="card" id="card-run">
+    <h2><span class="step">4</span> Run</h2>
+    <div class="row">
+      <button class="primary" id="btn-run">▶ Run registration</button>
+      <button class="danger hidden" id="btn-cancel">Cancel</button>
+      <span class="muted" id="run-status"></span>
+    </div>
+    <div id="progress-wrap" class="hidden">
+      <div class="progress"><div id="progress-bar"></div></div>
+      <p class="muted" id="progress-text"></p>
+      <pre class="log" id="log"></pre>
+    </div>
+    <div id="result"></div>
+  </section>
+
+  <!-- 5. RESULTS + VIEWER ------------------------------------------------- -->
+  <section class="card" id="card-results">
+    <h2><span class="step">5</span> Results &amp; interactive viewer</h2>
+    <div class="row">
+      <input id="results_root" type="text" spellcheck="false" placeholder="/path/to/data_registered">
+      <button class="secondary" data-browse="results_root" data-mode="dir">Browse…</button>
+      <button id="btn-results">Load results</button>
+      <a id="report-link" class="btnlink hidden" target="_blank">📄 Report PDF</a>
+    </div>
+    <table class="tbl" id="results-table"><thead><tr>
+      <th>sample</th><th>mirrored</th><th>rot (°)</th><th>H&amp;E px (µm)</th><th>TRE affine</th><th>TRE median</th><th>TRE p90</th><th>&lt;2 µm</th><th>residual</th><th>Dice</th><th></th>
+    </tr></thead><tbody></tbody></table>
+
+    <div id="viewer-wrap" class="hidden">
+      <div class="viewer-head">
+        <b id="viewer-title"></b>
+        <span class="spacer"></span>
+        <button class="secondary sm" id="btn-open-folder">Open folder</button>
+        <a class="btnlink sm" id="qc-link" target="_blank">QC page ↗</a>
+      </div>
+      <div class="grid4" id="viewer-metrics"></div>
+
+      <div class="viewer">
+        <div class="vcontrols">
+          <div class="vgroup">
+            <div class="vtitle">Display mode</div>
+            <div class="seg" id="mode">
+              <button data-v="blend" class="on">Blend</button><button data-v="swipe">Swipe</button><button data-v="checker">Checker</button>
+              <button data-v="flicker">Flicker</button><button data-v="false">False colour</button><button data-v="side">Side by side</button>
+              <button data-v="he">H&amp;E</button><button data-v="oct">OCT</button>
+            </div>
+          </div>
+          <div class="vgroup" id="g-alpha"><div class="vtitle">H&amp;E opacity <span id="alpha-v">50%</span></div><input type="range" id="alpha" min="0" max="100" value="50"></div>
+          <div class="vgroup hidden" id="g-swipe"><div class="vtitle">Swipe position (or Shift-drag)</div><input type="range" id="swipe" min="0" max="100" value="50"></div>
+          <div class="vgroup hidden" id="g-checker"><div class="vtitle">Checker tile <span id="tile-v">100 µm</span></div><input type="range" id="tile" min="10" max="1000" step="10" value="100">
+            <label class="check sm"><input type="checkbox" id="invert"> invert (checkerboard B) <kbd>I</kbd></label></div>
+          <div class="vgroup hidden" id="g-flicker"><div class="vtitle">Flicker interval <span id="flick-v">600 ms</span></div><input type="range" id="flick" min="150" max="2000" step="50" value="600"></div>
+          <div class="vgroup">
+            <div class="vtitle">H&amp;E transform</div>
+            <div class="seg" id="xform"><button data-v="def" class="on">Deformable</button><button data-v="aff">Affine only</button></div>
+            <label class="check sm"><input type="checkbox" id="orig-colours"> original colours (no stain norm)</label>
+          </div>
+          <div class="vgroup">
+            <div class="vtitle">Overlays</div>
+            <label class="check sm"><input type="checkbox" id="ov-contour"> tissue outlines (OCT magenta / H&amp;E green)</label>
+            <label class="check sm"><input type="checkbox" id="ov-grid"> 100 µm grid</label>
+            <label class="check sm"><input type="checkbox" id="ov-cross" checked> crosshair / pins</label>
+          </div>
+          <div class="vgroup">
+            <div class="vtitle">Navigate</div>
+            <div class="row"><button class="secondary sm" id="btn-fit">Fit</button><button class="secondary sm" id="btn-1to1">1:1 pixel</button><button class="secondary sm" id="btn-png">Save view PNG</button></div>
+            <select id="roi-jump" class="sm"><option value="">Jump to QC ROI…</option></select>
+            <canvas id="minimap" width="240" height="240"></canvas>
+          </div>
+          <div class="vgroup">
+            <div class="vtitle">Cursor</div>
+            <pre class="readout" id="readout">move over the image</pre>
+            <pre class="readout" id="pinout">click to drop a pin (H&amp;E native pixel lookup)</pre>
+            <button class="secondary sm" id="btn-clear-pins">Clear pins</button>
+          </div>
+          <p class="hint sm">Wheel = zoom · drag = pan · double-click = zoom in · keys: <kbd>+</kbd>/<kbd>−</kbd> zoom, arrows pan, <kbd>1</kbd>–<kbd>8</kbd> modes, <kbd>Space</kbd> swap, <kbd>F</kbd> fit</p>
+        </div>
+        <div class="vcanvas">
+          <canvas id="view"></canvas>
+          <div class="vbusy hidden" id="vbusy">loading…</div>
+          <div class="vscale" id="vscale"></div>
+        </div>
+      </div>
+
+      <h3>QC gallery</h3>
+      <div class="gallery-filter seg" id="gal-filter"></div>
+      <div class="gallery" id="gallery"></div>
+      <h3>Output files</h3>
+      <ul class="files" id="outputs"></ul>
+    </div>
+  </section>
+</main>
+
+<!-- folder / file browser modal (same interaction as oct_recon_AF_v2) -->
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <b id="modal-title">Select folder</b>
+      <button class="icon" id="modal-close">✕</button>
+    </div>
+    <div class="row">
+      <button class="secondary" id="modal-up">↑ Up</button>
+      <button class="secondary" id="modal-home">Home</button>
+      <select id="modal-roots"></select>
+      <input id="modal-path" type="text" spellcheck="false">
+    </div>
+    <ul id="modal-list"></ul>
+    <div class="modal-foot">
+      <span class="muted" id="modal-note"></span>
+      <button class="primary" id="modal-select">Select this folder</button>
+    </div>
+  </div>
+</div>
+
+<!-- image lightbox -->
+<div id="lightbox" class="modal hidden">
+  <div class="modal-box wide">
+    <div class="modal-head"><b id="lb-title"></b><span class="spacer"></span><a id="lb-open" class="btnlink sm" target="_blank">open full size ↗</a><button class="icon" id="lb-close">✕</button></div>
+    <div class="lb-img"><img id="lb-img"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/static/app.js"></script>
+<script src="/static/viewer.js"></script>
+</body>
+</html>

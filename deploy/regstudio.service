@@ -1,0 +1,15 @@
+# systemd user service: keeps Registration Studio running and restarts it on failure / reboot.
+#   mkdir -p ~/.config/systemd/user && cp deploy/regstudio.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now regstudio
+#   loginctl enable-linger $USER          # keep it running after you log out
+[Unit]
+Description=H&E-OCT Registration Studio
+After=network.target
+
+[Service]
+WorkingDirectory=%h/atesfet/dev/heoct_registration_web
+ExecStart=%h/miniforge3/envs/reg_env/bin/python launch.py --no-browser --port 8780
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

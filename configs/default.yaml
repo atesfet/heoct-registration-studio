@@ -1,0 +1,64 @@
+# Default parameters for H&E (moving) -> OCT (fixed) 2D registration.
+# Per-sample files in configs/samples/<sample>.yaml override any key here (deep merge).
+output_root: /home/adlz/atesfet/dev/data_12um_registered
+
+he:
+  work_downsample: 8          # tissue mask computed at 1/8 resolution, then upsampled
+  min_od: 0.12                # minimum summed optical density for tissue
+  min_saturation: 0.10        # HSV saturation (0-1) for stained tissue
+  exclude_hue_ranges: [[8, 35], [90, 125]]   # OpenCV hue (0-180): tan/brown holder, blue ink
+  min_component_frac: 0.25    # keep connected components >= this fraction of the largest (one section)
+  close_radius_px: 6          # at work resolution
+  stain_norm:
+    method: macenko
+    alpha: 1.0
+    beta: 0.15
+    ref_he: [[0.5626, 0.2159], [0.7201, 0.8012], [0.4062, 0.5581]]   # Macenko reference
+    ref_max_c: [1.9705, 1.0308]
+
+oct:
+  # texture-based tissue mask (see heoct/oct_preproc.py::tissue_mask)
+  work_downsample: 4
+  dark_db: 4.0                # pixels below this (dB above noise floor) count as "near noise"
+  dark_sigma_um: 160          # scale of the local dark-fraction map
+  max_dark_frac: 0.35         # tissue = local dark fraction below this
+  open_um: 20
+  body_open_um: 240           # bridges narrower than ~2x this to neighbouring pieces/debris are cut
+  min_component_frac: 0.25
+  tile_size_px: 350           # acquisition patch size (from metadata)
+  flatfield: true
+  clip_percentiles: [0.5, 99.5]
+
+registration:
+  fixed: oct                  # H&E is warped onto OCT
+  he_px_um_init: 1.75
+  he_px_um_search: [1.3, 2.3]
+  n_scales: 6
+  rot_search_deg: [-180, 175]
+  rot_step_deg: 10
+  allow_flip: true
+  n_candidates_refine: 6      # top mask-Dice candidates re-ranked by image similarity (MIND)
+  mask_refine_dilate_um: 100  # OCT mask is intersected with the dilated affine-registered H&E mask
+  affine_levels_um: [32, 16, 8]
+  affine_iters: [300, 200, 150]
+  deform_levels_um: [16, 8, 4, 2, 2]
+  deform_ctrl_spacing_um: [800, 400, 200, 100, 50]
+  deform_iters: [450, 400, 300, 250, 250]   # "mind1_long" in sweep round 2 (best p90 landmark TRE)
+  deform_lambda: [1.0, 0.5, 0.25, 0.1, 0.05]
+  affine_mind_radius_px: 2     # coarser MIND for init/affine (robust global fit)
+  affine_mind_dilation_px: 2
+  mind_radius_px: 1            # finer MIND for the deformable stage (sweep: median TRE 3.2 -> 2.4 um)
+  mind_dilation_px: 1
+  lr_affine: 0.003
+  lr_deform: 0.02
+
+output:
+  he_native_px_um: auto       # auto -> H&E pixel size estimated by the affine fit
+  interpolation: bicubic
+
+qc:
+  n_auto_rois: 8
+  roi_size_um: 700
+  manual_rois_um: []          # optional [[x_um, y_um], ...] centres in OCT space
+  residual_patch_um: 400
+  residual_search_um: 40

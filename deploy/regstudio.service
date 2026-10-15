@@ -7,7 +7,7 @@ Description=H&E-OCT Registration Studio
 After=network.target
 
 [Service]
-WorkingDirectory=%h/atesfet/dev/heoct_registration_web
+WorkingDirectory=%h/atesfet/dev/heoct_registration_web_v1
 ExecStart=%h/miniforge3/envs/reg_env/bin/python launch.py --no-browser --port 8780
 Restart=on-failure
 

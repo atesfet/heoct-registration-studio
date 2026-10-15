@@ -10,11 +10,22 @@ texture-based OCT background/debris removal + tile flat-field → GPU mirror/rot
 `output/` (calibrated lossless TIFFs + one metadata JSON) → full-resolution figures.
 
 ## Start
-```bash
-./start_linux.sh                    # creates conda env "reg_env" on first use, opens http://127.0.0.1:8780/
-# or, inside the env:
-conda activate reg_env && python launch.py [--port 8780] [--no-browser]
-```
+| Platform | How to start |
+|---|---|
+| **macOS** | Double-click `start_mac.command`. First time: right-click → *Open* → *Open* (or `chmod +x start_mac.command`). Uses the Apple GPU (Metal/MPS) when available. |
+| **Windows** | Double-click `start_windows.bat`. |
+| **Linux** | `./start_linux.sh` |
+
+The first start creates the conda environment `reg_env` from `environment.yml` (Miniforge recommended:
+<https://conda-forge.org/download/>; without conda a Python venv in `~/.regstudio_venv` is used). Every start checks that all
+required packages are present and installs missing ones (`tools/check_env.py`, e.g. when a `reg_env` already existed), then
+installs the right PyTorch build (`tools/setup_torch.py`: CUDA / MPS / CPU) and opens `http://127.0.0.1:8780/`.
+Keep the terminal window open; it also prints every job's log (`[job] …`).
+
+Without an NVIDIA GPU registration is much slower (Apple GPU / CPU: tens of minutes to ~1 h+ per sample); the page warns and
+defaults to the *fast* preset. For full-accuracy runs, use a machine with an NVIDIA GPU and view the results anywhere.
+
+Manual start inside the env: `conda activate reg_env && python launch.py [--port 8780] [--no-browser]`
 
 ## Using it
 1. **Input** – *Single sample*: Browse… to a sample folder (H&E `*4x*.tif` and OCT `*recon_xy_topk*.tif` are detected), or pick each

@@ -330,7 +330,15 @@ class Job:
                 if self.cancel.is_set():
                     self.log("cancelled"); break
                 if rc != 0:
-                    raise RuntimeError(f"{sid}: pipeline exited with code {rc} (see log)")
+                    with self.lock:
+                        tail = "\n".join(self.logs[-60:])
+                    m = re.search(r"requires the '([\w.-]+)' package|No module named '([\w.-]+)'", tail)
+                    hint = ""
+                    if m:
+                        pkg = m.group(1) or m.group(2)
+                        hint = (f" — the Python environment is missing the package '{pkg}'. Fix: restart with the start_* launcher "
+                                f"(it now installs missing packages) or run: {sys.executable} -m pip install {pkg}")
+                    raise RuntimeError(f"{sid}: pipeline exited with code {rc}{hint or ' (see log)'}")
                 with self.lock:
                     self.results.append(str(sdir))
             with self.lock:

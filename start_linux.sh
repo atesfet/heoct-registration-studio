@@ -20,7 +20,11 @@ if [ -n "$CONDA" ]; then
     echo "Creating conda environment $ENV (first start, a few minutes)…"
     "$CONDA" env create -f environment.yml
   fi
-  PY=$("$CONDA" run -n $ENV python -c "import sys; print(sys.executable)")
+  # resolve the env folder from "conda env list" (conda run can return the *active* env's python instead)
+  ENVDIR=$("$CONDA" env list | awk -v e="$ENV" '$1 == e {print $NF}')
+  PY="$ENVDIR/bin/python"
+  [ -x "$PY" ] || { echo "Could not find python in the conda env $ENV ($ENVDIR)"; exit 1; }
+  echo "Using $PY"
 else
   echo "conda not found → using a Python venv (~/.regstudio_venv). Miniforge is recommended: https://conda-forge.org/download/"
   PY3=$(command -v python3 || true)
@@ -33,6 +37,7 @@ else
   PY="$HOME/.regstudio_venv/bin/python"
 fi
 
+"$PY" tools/check_env.py
 "$PY" tools/setup_torch.py
 echo "Starting Registration Studio $(cat VERSION) … (keep this window open; Ctrl+C stops the server)"
 exec "$PY" launch.py "$@"

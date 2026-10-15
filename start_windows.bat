@@ -29,10 +29,18 @@ if errorlevel 1 (
   echo Creating conda environment %ENV% ^(first start, a few minutes^)...
   call "%CONDA%" env create -f environment.yml || goto :fail
 )
-for /f "delims=" %%p in ('call "%CONDA%" run -n %ENV% python -c "import sys; print(sys.executable)"') do set "PY=%%p"
-if not defined PY goto :fail
+rem resolve the env folder from "conda env list" (conda run can return the *active* env's python instead)
+set "ENVDIR="
+for /f "tokens=1,*" %%a in ('call "%CONDA%" env list') do if /i "%%a"=="%ENV%" set "ENVDIR=%%b"
+if not defined ENVDIR (echo Could not find the conda env %ENV%. & goto :fail)
+if "%ENVDIR:~0,2%"=="* " set "ENVDIR=%ENVDIR:~2%"
+for /f "tokens=* delims= " %%x in ("%ENVDIR%") do set "ENVDIR=%%x"
+set "PY=%ENVDIR%\python.exe"
+if not exist "%PY%" (echo Could not find python in %ENVDIR%. & goto :fail)
+echo Using %PY%
 
 :run
+"%PY%" tools\check_env.py || goto :fail
 "%PY%" tools\setup_torch.py || goto :fail
 set /p VER=<VERSION
 echo Starting Registration Studio %VER% ... (keep this window open; close it or press Ctrl+C to stop)

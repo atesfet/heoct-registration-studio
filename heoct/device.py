@@ -1,7 +1,8 @@
 """Compute-device selection: NVIDIA CUDA -> Apple-silicon MPS -> CPU.
 
 Override with the environment variable HEOCT_DEVICE=cuda|mps|cpu.
-PYTORCH_ENABLE_MPS_FALLBACK=1 lets ops MPS does not implement (e.g. bicubic grid_sample) run on the CPU.
+PYTORCH_ENABLE_MPS_FALLBACK=1 lets ops MPS does not implement run on the CPU. Bicubic grid_sample is *implemented
+but unsupported* on MPS (it raises), so register.grid_sample_safe handles that case explicitly.
 """
 from __future__ import annotations
 

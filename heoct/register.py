@@ -21,6 +21,20 @@ from .device import DEVICE, empty_cache
 from .features import gblur, mind
 
 
+# ------------------------------------------------------------------ device-safe sampling
+def grid_sample_safe(inp: torch.Tensor, grid: torch.Tensor, mode: str = "bilinear", padding_mode: str = "zeros",
+                     align_corners: bool = False) -> torch.Tensor:
+    """F.grid_sample that also works on Apple MPS, which raises 'Unsupported Bicubic interpolation'.
+
+    Bicubic sampling on MPS is done on the CPU (one pass per call; used for exports and point lookups, not in the
+    optimisation loop, which uses the separable matrix form below). Other devices/modes call F.grid_sample unchanged.
+    """
+    if mode == "bicubic" and inp.device.type == "mps":
+        return F.grid_sample(inp.cpu(), grid.cpu(), mode=mode, padding_mode=padding_mode,
+                             align_corners=align_corners).to(inp.device)
+    return F.grid_sample(inp, grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+
+
 # ------------------------------------------------------------------ separable bicubic interpolation
 def _cubic_weight_matrix(coord_norm: torch.Tensor, size: int) -> torch.Tensor:
     """(n, size) weights reproducing F.grid_sample(mode="bicubic", align_corners=True, padding_mode="border").
@@ -96,7 +110,7 @@ class Transform:
         Xn = torch.stack([X[..., 0] / self.ext_um[1] * 2 - 1, X[..., 1] / self.ext_um[0] * 2 - 1], -1)[None]
         u = 0
         for _, cg in ctrl_list:
-            u = u + F.grid_sample(cg, Xn, mode="bicubic", align_corners=True, padding_mode="border")[0].permute(1, 2, 0)
+            u = u + grid_sample_safe(cg, Xn, mode="bicubic", align_corners=True, padding_mode="border")[0].permute(1, 2, 0)
         return u
 
     def affine_apply(self, Y: torch.Tensor, M=None, d=None, A0=None, t0=None) -> torch.Tensor:
@@ -172,7 +186,7 @@ def soft_dice(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 def warp(img: torch.Tensor, T: Transform, X: torch.Tensor, with_deform=True, mode="bilinear") -> torch.Tensor:
     """Sample moving image (1,C,h,w; any pyramid level spanning the full H&E extent) at fixed coords X."""
     g = T.px_to_norm(T.map_px(X, with_deform))[None]
-    return F.grid_sample(img, g, mode=mode, padding_mode="zeros", align_corners=False)
+    return grid_sample_safe(img, g, mode=mode, padding_mode="zeros", align_corners=False)
 
 
 class Pyramid:
@@ -441,7 +455,7 @@ def warp_image(img: np.ndarray, T: Transform, with_deform=True, mode="bilinear",
     for r in range(0, H, chunk_rows):
         X = T.grid_um_exact(sp, (r, r + chunk_rows))
         g = T.px_to_norm(T.map_px(X, with_deform))[None]
-        o = F.grid_sample(src, g, mode=mode, padding_mode="zeros", align_corners=False)[0] + fill
+        o = grid_sample_safe(src, g, mode=mode, padding_mode="zeros", align_corners=False)[0] + fill
         out[r:r + X.shape[0]] = o.permute(1, 2, 0).cpu().numpy()
     del src
     empty_cache()
@@ -462,7 +476,7 @@ def resample_fixed(img: np.ndarray, fixed_px_um: float, spacing_um: float, shape
     xs = ((torch.arange(W, device=device) + 0.5) * spacing_um) / (Ws * fixed_px_um) * 2 - 1
     gy, gx = torch.meshgrid(ys, xs, indexing="ij")
     g = torch.stack([gx, gy], -1)[None]
-    o = F.grid_sample(src * val, g, mode=mode, padding_mode="zeros", align_corners=False)[0, 0]
+    o = grid_sample_safe(src * val, g, mode=mode, padding_mode="zeros", align_corners=False)[0, 0]
     v = F.grid_sample(val, g, mode="bilinear", padding_mode="zeros", align_corners=False)[0, 0]
     o = torch.where(v > 0.5, o / v.clamp(min=1e-6), torch.full_like(o, float("nan")))
     return o.cpu().numpy()

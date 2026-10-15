@@ -8,6 +8,9 @@
 The platform launcher (start_linux.sh) creates/activates the conda environment and then runs this file.
 """
 import argparse
+import os
+
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")  # Apple GPU: unsupported ops fall back to CPU
 import secrets
 import sys
 from pathlib import Path

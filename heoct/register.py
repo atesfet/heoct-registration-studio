@@ -16,12 +16,14 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from .device import DEVICE, empty_cache
+
 from .features import gblur, mind
 
 
 # ------------------------------------------------------------------ transform
 class Transform:
-    def __init__(self, fixed_shape, fixed_px_um, moving_shape, device="cuda"):
+    def __init__(self, fixed_shape, fixed_px_um, moving_shape, device=DEVICE):
         self.fixed_shape = tuple(int(v) for v in fixed_shape)          # (H, W) pixels
         self.fixed_px_um = float(fixed_px_um)
         self.moving_shape = tuple(int(v) for v in moving_shape)        # (Hm, Wm) pixels
@@ -114,7 +116,7 @@ class Transform:
         np.savez(path, **self.state())
 
     @classmethod
-    def load(cls, path, device="cuda") -> "Transform":
+    def load(cls, path, device=DEVICE) -> "Transform":
         z = np.load(path)
         T = cls(z["fixed_shape"], float(z["fixed_px_um"]), z["moving_shape"], device)
         for k in ("A0", "t0", "M", "d", "c"):
@@ -168,7 +170,7 @@ class Pyramid:
 
 # ------------------------------------------------------------------ registration
 class Registrar:
-    def __init__(self, fixed, fixed_mask, fixed_px_um, moving, moving_mask, cfg, log, device="cuda"):
+    def __init__(self, fixed, fixed_mask, fixed_px_um, moving, moving_mask, cfg, log, device=DEVICE):
         self.cfg, self.log, self.device = cfg, log, device
         self.T = Transform(fixed.shape, fixed_px_um, moving.shape, device)
         self.pyr = Pyramid(fixed, fixed_mask, fixed_px_um, moving, moving_mask, cfg["he_px_um_init"], device)
@@ -387,7 +389,7 @@ def dense_map_px(T: Transform, with_deform=True, chunk_rows=512) -> np.ndarray:
 
 @torch.no_grad()
 def warp_image(img: np.ndarray, T: Transform, with_deform=True, mode="bilinear", fill=0.0,
-               chunk_rows=1024, device="cuda", spacing_um: float | None = None) -> np.ndarray:
+               chunk_rows=1024, device=DEVICE, spacing_um: float | None = None) -> np.ndarray:
     """Warp a native-resolution H&E-space image (H,W) or (H,W,C) into the OCT frame.
 
     spacing_um=None -> OCT pixel grid; otherwise an exact-spacing grid over the OCT frame.
@@ -405,14 +407,14 @@ def warp_image(img: np.ndarray, T: Transform, with_deform=True, mode="bilinear",
         o = F.grid_sample(src, g, mode=mode, padding_mode="zeros", align_corners=False)[0] + fill
         out[r:r + X.shape[0]] = o.permute(1, 2, 0).cpu().numpy()
     del src
-    torch.cuda.empty_cache()
+    empty_cache()
     if np.issubdtype(dt, np.integer):
         out = np.clip(np.rint(out), np.iinfo(dt).min, np.iinfo(dt).max).astype(dt)
     return out[..., 0] if squeeze else out
 
 
 @torch.no_grad()
-def resample_fixed(img: np.ndarray, fixed_px_um: float, spacing_um: float, shape, mode="bilinear", device="cuda") -> np.ndarray:
+def resample_fixed(img: np.ndarray, fixed_px_um: float, spacing_um: float, shape, mode="bilinear", device=DEVICE) -> np.ndarray:
     """Resample an OCT-grid image onto an exact-spacing grid of the same frame (NaN-aware for floats)."""
     a = img.astype(np.float32)
     nan = np.isnan(a)

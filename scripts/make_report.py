@@ -218,8 +218,12 @@ def main():
     (rep / "report.tex").write_text(tpl)
     (rep / "report_numbers.json").write_text(json.dumps({"samples": samples, "pooled_affine": pa, "pooled_deformable": pd, **{k: v for k, v in subs.items() if not k.startswith("TABLE")}}, indent=1))
     print("compiling ...")
-    tect = Path(sys.executable).parent / "tectonic"
-    r = subprocess.run([str(tect), "report.tex"], cwd=rep, capture_output=True, text=True)
+    tect = shutil.which("tectonic") or next((str(c) for c in (Path(sys.executable).parent / "tectonic",
+                                                             Path(sys.executable).parent / "Library" / "bin" / "tectonic.exe")
+                                            if c.exists()), None)
+    if not tect:
+        print("tectonic not found: report.tex written but not compiled (conda install -c conda-forge tectonic)"); return
+    r = subprocess.run([tect, "report.tex"], cwd=rep, capture_output=True, text=True)
     print(r.stdout[-1500:], r.stderr[-3000:])
     print("PDF:", rep / "report.pdf", (rep / "report.pdf").exists())
 

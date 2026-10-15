@@ -1,4 +1,6 @@
 # conda env create -f environment.yml   (then: conda activate reg_env)
+# PyTorch is installed separately by the launchers (tools/setup_torch.py) so that the right build is chosen
+# per machine: CUDA (NVIDIA), MPS (Apple silicon) or CPU.
 name: reg_env
 channels: [conda-forge]
 dependencies:
@@ -17,6 +19,3 @@ dependencies:
   - pip
   - pip:
       - pymupdf
-      # GPU build of PyTorch (CUDA 12.4). start_linux.sh installs it; CPU-only machines can use the default index.
-      - --extra-index-url https://download.pytorch.org/whl/cu124
-      - torch

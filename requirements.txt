@@ -1,0 +1,12 @@
+# pip fallback (used by the launchers when conda is not available); PyTorch: python tools/setup_torch.py
+numpy
+scipy
+scikit-image
+tifffile
+imagecodecs
+opencv-python-headless
+matplotlib
+pandas
+pyyaml
+SimpleITK
+pymupdf

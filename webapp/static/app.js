@@ -18,7 +18,8 @@ function busy(btn, on) { btn.disabled = on; btn.classList.toggle("spin", on); }
 function joinPath(a, b) { if (!a) return b; return a.replace(/[\\/]+$/, "") + S.sep + b; }
 function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 function f2(v, d = 2) { return v === null || v === undefined ? "–" : Number(v).toFixed(d); }
-function fileUrl(p) { return "/files" + p.split("/").map(encodeURIComponent).join("/"); }
+// path-style URL so relative links inside served HTML (QC pages) keep working; Windows "C:\\x" -> /files/C:/x
+function fileUrl(p) { return "/files/" + p.replace(/\\/g, "/").replace(/^\/+/, "").split("/").map(encodeURIComponent).join("/"); }
 function baseName(p) { return (p || "").split(/[\\/]/).filter(Boolean).pop() || ""; }
 
 const SAVE_KEYS = ["sample_folder", "he_path", "oct_path", "data_root", "output_root", "sample_id", "results_root"];

@@ -14,6 +14,8 @@ import tifffile  # noqa: E402
 import torch  # noqa: E402
 import torch.nn.functional as F  # noqa: E402
 
+from .device import DEVICE  # noqa: E402
+
 from . import io  # noqa: E402
 from .features import mind  # noqa: E402
 from .register import Transform  # noqa: E402
@@ -72,7 +74,7 @@ def ds(img, f):
 
 # ------------------------------------------------------------ residual-shift estimation
 @torch.no_grad()
-def residual_shifts(o, he_int, mask, px_um, patch_um, search_um, level_um=4.0, device="cuda"):
+def residual_shifts(o, he_int, mask, px_um, patch_um, search_um, level_um=4.0, device=DEVICE):
     """Patchwise translation (um) that best re-aligns warped H&E to OCT (MIND-SSD block matching).
 
     Returned vectors are the remaining local misalignment; ~0 everywhere means good registration.

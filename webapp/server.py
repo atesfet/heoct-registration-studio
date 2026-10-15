@@ -3,7 +3,7 @@
 Endpoints (JSON unless noted)
   GET  /                         index.html
   GET  /static/<file>            front-end assets
-  GET  /files/<abs path>         a file inside a registered-results folder (QC pages, PNGs)
+  GET  /files/<abs path>         a file inside a registered-results folder (QC pages, PNGs, TIFFs, PDF); C:/... on Windows
   GET  /api/system               GPU / environment / defaults
   GET  /api/browse?path=&mode=   folder listing for the file browser (dirs + .tif/.tiff/.yaml/.yml/.json)
   POST /api/detect   {folder}    find the H&E (*4x*.tif) and OCT (*topk*.tif) of a sample folder
@@ -49,7 +49,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 sys.path.insert(0, str(APP))
 from heoct import io as hio  # noqa: E402
 
-VERSION = "registration-studio v1"
+VERSION = "Registration Studio " + (APP / "VERSION").read_text().strip()
 CONF = {"token": None, "allow_roots": [], "local_only": True}
 
 
@@ -108,13 +108,15 @@ def system_info():
             "sep": os.sep, "allow_roots": [str(r) for r in CONF["allow_roots"]], "local_only": CONF["local_only"]}
     try:
         import torch
+        from heoct.device import DEVICE, device_name
         info["torch"] = torch.__version__
-        info["gpu"] = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
-        if torch.cuda.is_available():
+        info["device"] = DEVICE
+        info["gpu"] = device_name() if DEVICE in ("cuda", "mps") else None
+        if DEVICE == "cuda":
             free, total = torch.cuda.mem_get_info()
             info["gpu_mem"] = f"{free / 2**30:.0f}/{total / 2**30:.0f} GB free"
     except Exception as e:  # noqa: BLE001
-        info["torch"] = None; info["gpu"] = None; info["torch_error"] = str(e)
+        info["torch"] = None; info["gpu"] = None; info["device"] = None; info["torch_error"] = str(e)
     info["cpus"] = os.cpu_count()
     info["tectonic"] = bool(shutil.which("tectonic") or (Path(sys.executable).parent / "tectonic").exists())
     info["defaults"] = yaml.safe_load((APP / "configs" / "default.yaml").read_text())
@@ -590,7 +592,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(403, {"error": "forbidden"})
                 return self._file(p)
             if u.path.startswith("/files/"):
-                p = Path(urllib.parse.unquote(u.path[len("/files"):])).resolve()
+                # /files/<absolute path with forward slashes>; Windows drives as /files/C:/...
+                rel = urllib.parse.unquote(u.path[len("/files/"):])
+                p = Path(rel if re.match(r"^[A-Za-z]:", rel) else "/" + rel).resolve()
                 # only files that belong to a registered sample (or its results root) can be served
                 ok = allowed(p) and any(is_registered(a) or (a / "report").is_dir() for a in list(p.parents)[:6])
                 if not ok:

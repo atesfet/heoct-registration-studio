@@ -15,6 +15,9 @@ Stages (outputs under <output_root>/<sample_id>/, output_root set in configs/def
     06_figures      optional (figures.save_fullres_previews, default off): full-resolution Fig. 1 panels (a-g) + Fig. 2 views (h-j) + composite
 """
 import argparse
+import os
+
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")  # Apple GPU: unsupported ops fall back to CPU
 import json
 import sys
 import time

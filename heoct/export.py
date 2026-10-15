@@ -12,6 +12,7 @@ import tifffile
 
 from . import io
 from . import register as R
+from .device import device_name
 
 
 def sha256(path, chunk=1 << 24) -> str:
@@ -121,7 +122,7 @@ def run(cfg: dict) -> None:
                      "residual_block_matching": {k: qc.get(f"residual_{k}") for k in ("affine", "deformable")}},
         "software": {"python": platform.python_version(), "torch": torch.__version__, "opencv": cv2.__version__,
                      "scikit-image": skimage.__version__, "tifffile": tifffile.__version__, "numpy": np.__version__,
-                     "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+                     "compute_device": device_name(),
                      "code": str(Path(__file__).resolve().parents[1]), "config": cfg.get("_config_path"),
                      "default_config": cfg.get("_default_config_path")},
     }

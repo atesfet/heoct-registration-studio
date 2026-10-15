@@ -170,9 +170,18 @@ async function run() {
 }
 function startPolling() { clearInterval(S.poll); S.poll = setInterval(pollJob, 1000); pollJob(); }
 async function pollJob() {
-  let j; try { j = await api("/api/job?since=" + S.logN); } catch (e) { return; }
+  let j;
+  try { j = await api("/api/job?since=" + S.logN); S.pollFail = 0; }
+  catch (e) {   // never fail silently: tell the user the page lost contact with the server
+    S.pollFail = (S.pollFail || 0) + 1;
+    if (S.pollFail >= 3) $("progress-text").textContent = `lost contact with the server (${e.message}) — is the terminal window still running? retrying…`;
+    return;
+  }
   if (j.logs.length) { const L = $("log"); L.textContent += j.logs.join("\n") + "\n"; L.scrollTop = L.scrollHeight; S.logN = j.n_logs; }
   const p = j.progress || {}; $("progress-bar").style.width = `${Math.round(100 * (p.frac || 0))}%`;
+  if (j.logs.length) S.lastLog = Date.now();
+  if (["starting", "running"].includes(j.state) && j.started && !j.n_logs && Date.now() / 1000 - j.started > 30)
+    toast("No output from the job after 30 s — check the terminal window that runs the server for errors.", true);
   const el = j.started ? Math.round(((j.finished || Date.now() / 1000) - j.started)) : 0;
   $("progress-text").textContent = `${j.state}` + (p.sample ? ` · sample ${p.sample_i + 1}/${p.n_samples} ${p.sample}` : "") +
     (p.stage ? ` · stage ${p.stage} ${p.stage_name || ""}` : "") + ` · ${Math.floor(el / 60)} min ${el % 60} s`;

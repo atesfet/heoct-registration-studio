@@ -19,7 +19,8 @@
 \setlength{\parindent}{1em}\setlength{\parskip}{0pt}
 \renewcommand{\dbltopfraction}{0.95}\renewcommand{\dblfloatpagefraction}{0.6}\setcounter{dbltopnumber}{3}
 \renewcommand{\topfraction}{0.95}\renewcommand{\textfraction}{0.05}\renewcommand{\floatpagefraction}{0.6}
-\sisetup{detect-all,text-micro=\textmu,math-micro=\text{\textmu}}
+\sisetup{detect-all}
+\DeclareSIPrefix{\micro}{\text{\textmu}}{-6}   % Helvetica/T1 has no math micro glyph
 \begin{document}
 \twocolumn[{%
 \begin{flushleft}
@@ -114,7 +115,11 @@ The pipeline aligns H\&E to OCT with a median landmark error of about 1.5 OCT pi
 
 \subsection{Outputs} For each specimen, \texttt{output/} contains lossless TIFFs on (i) the native OCT grid (\SI{2}{\micro\metre}) and (ii) an H\&E-native grid over the same physical frame: OCT (dB), registered H\&E (normalised and original colours), and OCT, H\&E and common tissue masks (common mask $=$ OCT $\wedge$ registered H\&E). Every TIFF is ImageJ-calibrated and embeds the complete metadata, which is also written to a single \texttt{<sample>\_metadata.json}: inputs with SHA-256 checksums, pixel sizes, coordinate frame and its conversion to OCT scanner millimetres, transform parameters, preprocessing parameters, stain matrices, accuracy metrics and software versions. The full transform (\texttt{transform\_full.npz}) and a dense per-pixel map are kept for mapping annotations in either direction.
 
-\subsection{Code and data availability} {\raggedright Code: \texttt{/home/adlz/atesfet/dev/registration/v1} (conda environment \texttt{reg\_env}). Registered data and per-specimen quality-control pages: \texttt{/home/adlz/atesfet/dev/data\_12um\_registered/<sample>/}.\par}
+\subsection{Quality control of the epidermis} Because the epidermis lies at the tissue rim, a per-specimen figure (\texttt{scripts/epidermis\_check.py}) shows six \SI{800}{\micro\metre} edge regions with the OCT, registered H\&E and common-mask outlines and both images restricted to the common mask; in all four specimens the epidermis and stratum corneum lie inside all three masks, and the OCT/H\&E tissue-edge distance is reported per specimen (Table~\ref{tab:acc}).
+
+\subsection{Software} Registration runs on NVIDIA GPUs (CUDA), Apple-silicon GPUs (Metal/MPS) or the CPU. The B-spline displacement on the regular sampling grid is evaluated as two matrix products with exact bicubic weights ($\mathbf{u}=\mathbf{W}_y\mathbf{C}\mathbf{W}_x^\top$), identical to bicubic grid sampling to within \SI{e-4}{\micro\metre} and an order of magnitude faster on CPUs. Runtimes in Table~\ref{tab:data} are for an NVIDIA A40; without an NVIDIA GPU a standard run takes about an hour or more per specimen.
+
+\subsection{Code and data availability} {\raggedright Code: \url{https://github.com/atesfet/heoct-registration-studio-v1} (Registration Studio v1: pipeline, interactive web viewer, launchers for Linux, macOS and Windows; conda environment \texttt{reg\_env}); local copy \texttt{/home/adlz/atesfet/dev/registration/v1}. Registered data, one folder per specimen with stages \texttt{01}--\texttt{06} and the final \texttt{output/} folder: \texttt{/home/adlz/atesfet/dev/data\_12um\_registered/<sample>/}. This report and the cross-specimen figures: \texttt{/home/adlz/atesfet/dev/registration/v1/\{report,figures\}/}.\par}
 
 \begingroup\footnotesize
 \begin{thebibliography}{10}\setlength{\itemsep}{0pt}

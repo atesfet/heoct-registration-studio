@@ -121,6 +121,11 @@ def system_info():
     info["cpus"] = os.cpu_count()
     info["tectonic"] = bool(shutil.which("tectonic") or (Path(sys.executable).parent / "tectonic").exists())
     info["defaults"] = yaml.safe_load((APP / "configs" / "default.yaml").read_text())
+    d = info["defaults"]
+    if not d.get("output_root") or not Path(d["output_root"]).parent.exists():
+        # the configured folder belongs to another machine (e.g. a Linux path on a Mac): use the home folder
+        d["output_root"] = str(Path.home() / "RegistrationStudio" / "results")
+        info["output_root_note"] = "configured output_root not found on this computer; using ~/RegistrationStudio/results"
     return info
 
 
@@ -236,8 +241,10 @@ class Job:
         self.request = None; self.results = []
 
     def log(self, line: str):
+        line = line.rstrip("\n")
         with self.lock:
-            self.logs.append(line.rstrip("\n"))
+            self.logs.append(line)
+        print("  [job] " + line, flush=True)   # also visible in the terminal window running the server
 
     def snapshot(self, since: int):
         with self.lock:
@@ -264,10 +271,11 @@ class Job:
         threading.Thread(target=self._run, args=(req, out_root), daemon=True).start()
 
     def _run(self, req, out_root):
-        stages = req.get("stages") or ["01", "02", "03", "04", "05"]
-        defaults = yaml.safe_load((APP / "configs" / "default.yaml").read_text())
-        overrides = req.get("overrides") or {}
         try:
+            self.log(f"job started: {len(req['jobs'])} sample(s) -> {out_root}")
+            stages = req.get("stages") or ["01", "02", "03", "04", "05"]
+            defaults = yaml.safe_load((APP / "configs" / "default.yaml").read_text())
+            overrides = req.get("overrides") or {}
             if (req.get("yaml_overrides") or "").strip():
                 extra = yaml.safe_load(req["yaml_overrides"]) or {}
                 if not isinstance(extra, dict):
@@ -281,6 +289,9 @@ class Job:
                 sid = j["sample_id"]
                 cfg = hio._merge(defaults, overrides)
                 cfg |= {"sample_id": sid, "he_path": j["he_path"], "oct_path": j["oct_path"], "output_root": str(out_root)}
+                if not cfg.get("aux_root") or not Path(cfg["aux_root"]).exists():
+                    cfg["aux_root"] = str(out_root)        # configured aux folder is not on this computer
+                self.log(f"[{sid}] creating {out_root / sid}")
                 sdir = out_root / sid; sdir.mkdir(parents=True, exist_ok=True)
                 cpath = sdir / "run_config.yaml"
                 cpath.write_text("# written by Registration Studio " + time.strftime("%Y-%m-%d %H:%M:%S") + "\n" + yaml.safe_dump(cfg, sort_keys=False))
@@ -289,8 +300,10 @@ class Job:
                     self.progress.update({"sample_i": si, "sample": sid, "stage": None, "frac": si / len(req["jobs"])})
                 cmd = [sys.executable, "-u", str(APP / "scripts" / "run_pipeline.py"), "--config", str(cpath),
                        "--default", str(APP / "configs" / "default.yaml"), "--stages", *stages]
+                self.log("starting pipeline: " + " ".join(cmd))
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
                                              cwd=str(APP), env={**os.environ, "PYTHONUNBUFFERED": "1"}, start_new_session=True)
+                self.log(f"pipeline process {self.proc.pid} started (first output usually within ~10 s)")
                 sub_n = 0
                 for line in self.proc.stdout:
                     if "Warning" in line and "warn(" in line:
@@ -324,9 +337,12 @@ class Job:
                 self.state = "cancelled" if self.cancel.is_set() else "done"
                 self.progress["frac"] = 1.0 if self.state == "done" else self.progress.get("frac", 0)
         except Exception as e:  # noqa: BLE001
+            import traceback
             with self.lock:
                 self.state = "error"; self.error = f"{type(e).__name__}: {e}"
             self.log("ERROR " + self.error)
+            for ln in traceback.format_exc().splitlines():
+                self.log(ln)
         finally:
             self.finished = time.time(); self.proc = None
 

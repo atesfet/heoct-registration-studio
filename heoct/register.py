@@ -21,6 +21,30 @@ from .device import DEVICE, empty_cache
 from .features import gblur, mind
 
 
+# ------------------------------------------------------------------ separable bicubic interpolation
+def _cubic_weight_matrix(coord_norm: torch.Tensor, size: int) -> torch.Tensor:
+    """(n, size) weights reproducing F.grid_sample(mode="bicubic", align_corners=True, padding_mode="border").
+
+    Cubic convolution with A = -0.75 (as in PyTorch); neighbour indices are clamped to the border.
+    For a regular (meshgrid) sample grid, bicubic sampling of a control grid C is then Wy @ C @ Wx^T: two small
+    matrix products instead of a per-pixel gather, ~exact and fast on CPU and Apple-silicon (MPS) GPUs.
+    """
+    A = -0.75
+    x = (coord_norm + 1) / 2 * (size - 1)
+    f = torch.floor(x); t = x - f
+    def w_near(d):                     # |d| <= 1
+        return ((A + 2) * d - (A + 3)) * d * d + 1
+    def w_far(d):                      # 1 < |d| < 2
+        return ((A * d - 5 * A) * d + 8 * A) * d - 4 * A
+    ws = [w_far(t + 1), w_near(t), w_near(1 - t), w_far(2 - t)]
+    W = torch.zeros(x.shape[0], size, dtype=coord_norm.dtype, device=coord_norm.device)
+    rows = torch.arange(x.shape[0], device=coord_norm.device)
+    for k, wk in enumerate(ws):
+        idx = (f.long() - 1 + k).clamp(0, size - 1)
+        W.index_put_((rows, idx), wk, accumulate=True)
+    return W
+
+
 # ------------------------------------------------------------------ transform
 class Transform:
     def __init__(self, fixed_shape, fixed_px_um, moving_shape, device=DEVICE):
@@ -60,6 +84,15 @@ class Transform:
         ctrl_list = self.ctrl if ctrl_list is None else ctrl_list
         if not ctrl_list:
             return torch.zeros_like(X)
+        if X.ndim == 3 and X.shape[0] > 1 and X.shape[1] > 1 and torch.equal(X[0, :, 0], X[-1, :, 0]) and torch.equal(X[:, 0, 1], X[:, -1, 1]):
+            # regular grid (all registration levels and exports): separable bicubic = two matrix products
+            xn = X[0, :, 0] / self.ext_um[1] * 2 - 1
+            yn = X[:, 0, 1] / self.ext_um[0] * 2 - 1
+            u = 0
+            for _, cg in ctrl_list:
+                Wy = _cubic_weight_matrix(yn, cg.shape[2]); Wx = _cubic_weight_matrix(xn, cg.shape[3])
+                u = u + (Wy @ cg[0] @ Wx.T).permute(1, 2, 0)
+            return u
         Xn = torch.stack([X[..., 0] / self.ext_um[1] * 2 - 1, X[..., 1] / self.ext_um[0] * 2 - 1], -1)[None]
         u = 0
         for _, cg in ctrl_list:
@@ -309,6 +342,8 @@ class Registrar:
                 self.T.M, self.T.d = M, dp * 1000.0
                 loss, met = self._loss(s, with_deform=False)
                 loss.backward(); opt.step()
+                if (it + 1) % max(1, iters // 3) == 0 and it + 1 < iters:
+                    self.log.info(f"  affine {s}um: iter {it + 1}/{iters} ({time.time() - t0:.0f}s)")
             self.T.M, self.T.d = M.detach().clone(), (dp * 1000.0).detach().clone()
             with torch.no_grad():
                 _, met = self._loss(s, with_deform=False)
@@ -342,6 +377,8 @@ class Registrar:
                 reg, fold = self.regulariser(u, s)
                 (loss + lam * reg + 10.0 * fold).backward()
                 opt.step()
+                if (it + 1) % max(1, iters // 5) == 0 and it + 1 < iters:
+                    self.log.info(f"  deform {s}um ctrl {sp}um: iter {it + 1}/{iters} loss {float(loss):.4f} ({time.time() - t0:.0f}s)")
             self.T.ctrl = frozen + [(sp, cg.detach().clone())]
             with torch.no_grad():
                 _, met = self._loss(s, True)

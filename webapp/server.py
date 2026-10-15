@@ -36,6 +36,7 @@ import urllib.parse
 import webbrowser
 from collections import OrderedDict
 from http import cookies
+import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -300,10 +301,10 @@ class Job:
                         st = m.group(1)
                         if self.progress.get("stage") != st:
                             sub_n = 0
-                        sub_n += ("level" in line or "candidate" in line)
+                        sub_n += ("level" in line or "candidate" in line or ": iter " in line)
                         k = stages.index(st)
-                        # stage 03 has ~17 progress lines (6 candidates, 3+3 affine, 5 deform)
-                        inner = min(sub_n / 17.0, 0.95) if st == "03" else 0.5
+                        # stage 03 emits ~49 progress lines (6 candidates, affine levels + iter lines, 5 deform levels x 5)
+                        inner = min(sub_n / 49.0, 0.97) if st == "03" else 0.5
                         w = [1, 1, 8, 1, 1, 1]  # rough relative cost per stage
                         ws = [w[["01", "02", "03", "04", "05", "06"].index(x)] for x in stages]
                         f = (sum(ws[:k]) + inner * ws[k]) / sum(ws)
@@ -649,15 +650,32 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {"error": f"{type(e).__name__}: {e}"})
 
 
+class Server(ThreadingHTTPServer):
+    """ThreadingHTTPServer without the reverse-DNS lookup in server_bind.
+
+    http.server.HTTPServer.server_bind calls socket.getfqdn(host), which can block for a long time (or indefinitely)
+    on macOS, VPNs and some university networks; the name is only used for logging, so skip it.
+    """
+    daemon_threads = True
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name, self.server_port = str(host), port
+
+
 def serve(host="127.0.0.1", port=8780, open_browser=True, token=None, allow_roots=()):
     CONF["token"] = token
     CONF["allow_roots"] = [Path(r).expanduser().resolve() for r in allow_roots]
     CONF["local_only"] = host in ("127.0.0.1", "localhost", "::1")
+    print("  [3/4] finding a free port…", flush=True)
     for p in range(port, port + 50):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
             if s.connect_ex(("127.0.0.1", p)) != 0:
                 port = p; break
-    srv = ThreadingHTTPServer((host, port), Handler)
+    print(f"  [4/4] opening port {port}…", flush=True)
+    srv = Server((host, port), Handler)
     shown = "127.0.0.1" if host in ("0.0.0.0", "") else host
     url = f"http://{shown}:{port}/" + (f"?token={token}" if token else "")
     print(f"Registration Studio running at {url}", flush=True)

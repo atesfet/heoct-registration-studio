@@ -90,6 +90,8 @@ def stage03(cfg):
     import torch
     from heoct import register as R
     out = io.stage_dir(cfg, "03_registration"); log = io.get_logger(out, "03_registration")
+    from heoct.device import device_name
+    log.info(f"compute device: {device_name()}  (NVIDIA GPU: minutes; Apple GPU / CPU: much slower, see README)")
     d1, d2 = io.stage_dir(cfg, "01_he_preproc"), io.stage_dir(cfg, "02_oct_preproc")
     he_rgb = tifffile.imread(d1 / "he_stainnorm_rgb.tif")
     he_mask = tifffile.imread(d1 / "he_tissue_mask.tif") > 0

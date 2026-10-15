@@ -42,6 +42,13 @@ async function loadSystem() {
   $("rot_step_deg").value = R.rot_step_deg ?? 10; $("allow_flip").value = String(R.allow_flip ?? true);
   if (R.he_px_um_search) { $("px_lo").value = R.he_px_um_search[0]; $("px_hi").value = R.he_px_um_search[1]; }
   $("save_fullres").checked = !!(s.defaults.figures || {}).save_fullres_previews;
+  if (s.device && s.device !== "cuda") {
+    const where = s.device === "mps" ? "the Apple GPU (Metal/MPS)" : "the CPU";
+    $("device-note").innerHTML = `<b>No NVIDIA GPU found — registration will run on ${where}.</b> It is much slower than on an NVIDIA GPU ` +
+      `(the standard preset can take ~1 h or more per sample on a CPU). The <b>fast</b> preset is selected by default; ` +
+      `the log prints a progress line about every minute, so the run is working even when the bar moves slowly.`;
+    $("device-note").classList.remove("hidden"); $("preset").value = "fast";
+  }
   $("max_dark_frac").value = O.max_dark_frac ?? 0.35; $("body_open_um").value = O.body_open_um ?? 240;
   if (!$("output_root").value && s.defaults.output_root) $("output_root").value = s.defaults.output_root;
   if (!$("results_root").value) $("results_root").value = $("output_root").value;

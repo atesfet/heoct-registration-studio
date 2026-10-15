@@ -8,7 +8,9 @@
 The platform launcher (start_linux.sh) creates/activates the conda environment and then runs this file.
 """
 import argparse
+import faulthandler
 import os
+import time
 
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")  # Apple GPU: unsupported ops fall back to CPU
 import secrets
@@ -27,7 +29,14 @@ def main():
     ap.add_argument("--allow-root", action="append", default=[], help="restrict browsing/reading/writing to this folder (repeatable)")
     a = ap.parse_args()
     token = secrets.token_urlsafe(18) if a.token == "auto" else a.token
+    # if start-up stalls, print where (every 20 s) instead of sitting silently
+    faulthandler.dump_traceback_later(20, repeat=True)
+    t0 = time.time()
+    print(f"  [1/4] Python {sys.version.split()[0]} at {sys.executable}", flush=True)
+    print("  [2/4] loading modules (numpy, OpenCV, tifffile; the first start on a new machine can take ~30 s)…", flush=True)
     from webapp.server import serve
+    print(f"        modules loaded in {time.time() - t0:.1f} s", flush=True)
+    faulthandler.cancel_dump_traceback_later()
     serve(a.host, a.port, open_browser=not a.no_browser, token=token, allow_roots=a.allow_root)
 
 

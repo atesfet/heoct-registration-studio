@@ -49,6 +49,7 @@ webapp/static/                 index.html, app.js (I/O, browser, runs), viewer.j
 heoct/                         registration library (io, he_preproc, oct_preproc, features, register, qc, export, figures)
 scripts/run_pipeline.py        CLI pipeline (the web app runs it as a subprocess)
 scripts/make_report.py         Nature-Methods-style LaTeX/PDF report over a results root
+scripts/epidermis_check.py     per-sample figure: epidermis kept in the OCT / registered-H&E / common masks
 configs/default.yaml           all parameters (documented inline)
 environment.yml                conda env "reg_env" (PyTorch CUDA 12.4 wheel)
 deploy/regstudio.service       systemd unit

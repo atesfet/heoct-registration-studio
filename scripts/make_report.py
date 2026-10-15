@@ -2,7 +2,7 @@
 """Build a Nature-Methods-style LaTeX report (and PDF) over all registered samples.
 
 Usage: python scripts/make_report.py [--samples 12umA sample_10 ...]
-Output: <output_root>/report/{report.tex, report.pdf, figures/*.png}
+Output: <aux_root>/report/{report.tex, report.pdf, figures/*.png}  (aux_root defaults to output_root)
 """
 import argparse, json, shutil, subprocess, sys, time
 from pathlib import Path
@@ -199,7 +199,7 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--samples", nargs="*"); a = ap.parse_args()
     samples = a.samples or [p.stem for p in sorted((ROOT / "configs" / "samples").glob("*.yaml"))]
     Ss = [load(s) for s in samples]
-    rep = Path(Ss[0]["cfg"]["output_root"]) / "report"; fd = rep / "figures"; fd.mkdir(parents=True, exist_ok=True)
+    rep = io.aux_root(Ss[0]["cfg"]) / "report"; fd = rep / "figures"; fd.mkdir(parents=True, exist_ok=True)
     print("figures ..."); fig_pipeline(Ss[0], fd / "fig1_pipeline.png"); fig_overview(Ss, fd / "fig2_overview.png")
     fig_rois(Ss, fd / "fig3_rois.png"); fig_accuracy(Ss, fd / "fig4_accuracy.png")
     t1, t2 = tables(Ss); pa, pd = pooled(Ss, "affine"), pooled(Ss, "deformable")

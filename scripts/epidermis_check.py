@@ -4,7 +4,7 @@
 For each sample: an overview and 6 zoomed edge views (800 um) evenly spaced around the tissue boundary.
 Panels: OCT + mask outlines | registered H&E + outlines | OCT inside the common mask | H&E inside the common mask.
 Outlines: cyan = common mask, magenta = OCT mask, green = registered H&E mask.
-Output: <output_root>/figures/epidermis_check/<sample>_epidermis_check.png
+Output: <aux_root>/figures/epidermis_check/<sample>_epidermis_check.png  (aux_root defaults to output_root)
 
 Usage: python scripts/epidermis_check.py [--root <results root>] [sample ...]
        (default root: output_root in configs/default.yaml; default samples: every registered sample under the root)
@@ -32,7 +32,7 @@ def label(w, text, h=26):
     return b
 
 
-def run(sample, root):
+def run(sample, root, aux):
     o = root / sample / "output"
     db = tifffile.imread(o / f"{sample}_OCT_dB_oct_grid.tif")
     he = tifffile.imread(o / f"{sample}_HE_registered_stainnorm_oct_grid.tif")
@@ -71,7 +71,7 @@ def run(sample, root):
     top = np.hstack(ov); top = np.pad(top, ((0, 0), (0, max(0, Wd - top.shape[1])), (0, 0)), constant_values=255)[:, :Wd]
     head = label(Wd, f"{sample}: epidermis check   outlines: cyan = COMMON mask, magenta = OCT mask, green = registered H&E mask   |   OCT/H&E tissue-edge distance (median) = {edge_med:.1f} um", 30)
     fig = np.vstack([head, top] + rows)
-    out = root / "figures" / "epidermis_check" / f"{sample}_epidermis_check.png"
+    out = aux / "figures" / "epidermis_check" / f"{sample}_epidermis_check.png"
     out.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out), fig[..., ::-1])
     return out
@@ -80,7 +80,8 @@ def run(sample, root):
 if __name__ == "__main__":
     import yaml
     ap = argparse.ArgumentParser(); ap.add_argument("--root"); ap.add_argument("samples", nargs="*"); a = ap.parse_args()
-    root = Path(a.root or yaml.safe_load((Path(__file__).resolve().parents[1] / "configs" / "default.yaml").read_text())["output_root"])
+    d = yaml.safe_load((Path(__file__).resolve().parents[1] / "configs" / "default.yaml").read_text())
+    root = Path(a.root or d["output_root"]); aux = Path(d.get("aux_root") or root)
     samples = a.samples or sorted(d.name for d in root.iterdir() if d.is_dir() and any((d / "output").glob("*_metadata.json")))
     for s in samples:
-        print(run(s, root))
+        print(run(s, root, aux))

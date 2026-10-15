@@ -1,6 +1,7 @@
 # Default parameters for H&E (moving) -> OCT (fixed) 2D registration.
 # Per-sample files in configs/samples/<sample>.yaml override any key here (deep merge).
 output_root: /home/adlz/atesfet/dev/data_12um_registered
+aux_root: /home/adlz/atesfet/dev/registration/v1   # cross-sample report/ and figures/ (null = output_root)
 
 he:
   work_downsample: 8          # tissue mask computed at 1/8 resolution, then upsampled

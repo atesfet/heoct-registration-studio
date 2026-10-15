@@ -128,7 +128,7 @@ def figure1(cfg: dict) -> Path:
     io.save_png(out / f"{sid}_fig1_composite_preview.png", comp, 4000)
     io.write_json(out / "fig1_info.json", {"sample_id": sid, "description": __doc__, "files": files})
     # collected folder across samples (symlinks, no duplication)
-    coll = Path(cfg["output_root"]) / "figures" / "fig1_fullres"; coll.mkdir(parents=True, exist_ok=True)
+    coll = io.aux_root(cfg) / "figures" / "fig1_fullres"; coll.mkdir(parents=True, exist_ok=True)
     for f in (cp, out / f"{sid}_fig1_composite_preview.png"):
         link = coll / f.name
         if link.is_symlink() or link.exists():

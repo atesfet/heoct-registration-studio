@@ -30,6 +30,11 @@ def load_config(path: str | Path, default: str | Path | None = None) -> dict:
     return cfg
 
 
+def aux_root(cfg: dict) -> Path:
+    """Folder for cross-sample outputs (report/, figures/); defaults to output_root."""
+    return Path(cfg.get("aux_root") or cfg["output_root"])
+
+
 def stage_dir(cfg: dict, stage: str) -> Path:
     d = Path(cfg["output_root"]) / cfg["sample_id"] / stage
     d.mkdir(parents=True, exist_ok=True)

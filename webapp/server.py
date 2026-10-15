@@ -371,9 +371,11 @@ def results(root: str):
         s = _sample_summary(c)
         if s:
             out.append(s)
-    rep = r / "report" / "report.pdf"
-    return {"root": str(r), "samples": out, "report_pdf": str(rep) if rep.exists() else None,
-            "figures": sorted(str(p) for p in (r / "figures").rglob("*_preview.png")) if (r / "figures").exists() else []}
+    aux = Path((yaml.safe_load((APP / "configs" / "default.yaml").read_text()) or {}).get("aux_root") or r)
+    rep = next((d / "report" / "report.pdf" for d in (r, aux) if (d / "report" / "report.pdf").exists()), None)
+    figs = next((d / "figures" for d in (r, aux) if (d / "figures").exists()), None)
+    return {"root": str(r), "samples": out, "report_pdf": str(rep) if rep else None,
+            "figures": sorted(str(p) for p in figs.rglob("*_preview.png")) if figs else []}
 
 
 def result(dirpath: str):
@@ -597,7 +599,9 @@ class Handler(BaseHTTPRequestHandler):
                 rel = urllib.parse.unquote(u.path[len("/files/"):])
                 p = Path(rel if re.match(r"^[A-Za-z]:", rel) else "/" + rel).resolve()
                 # only files that belong to a registered sample (or its results root) can be served
-                ok = allowed(p) and any(is_registered(a) or (a / "report").is_dir() for a in list(p.parents)[:6])
+                # registered-sample folders, or the cross-sample report/ and figures/ folders (aux_root)
+                ok = allowed(p) and (any(is_registered(a) for a in list(p.parents)[:6])
+                                     or any(a.name in ("report", "figures") for a in list(p.parents)[:3]))
                 if not ok:
                     return self._send(403, {"error": "only files inside registered-result folders can be served"})
                 return self._file(p)

@@ -260,6 +260,46 @@ def fig_landmarks(S, path, win_um=500, sub_um=200, zoom_um=46):
     return {"n_in_view": int(k.sum()), "n_total": len(E), "pair_err": float(e), "pair_d2": float(d2)}
 
 
+def fig_deformation(Ss, path, grid_um=16.0, cap_um=30.0):
+    """Non-rigid displacement (on top of the affine) for every specimen: magnitude map + exaggerated grid."""
+    import torch
+    from heoct.register import Transform
+    n = len(Ss)
+    fig, axs = plt.subplots(2, n, figsize=(7.2, 4.6), gridspec_kw={"hspace": 0.12, "wspace": 0.08})
+    axs = np.array(axs).reshape(2, n); stats = []
+    for i, S in enumerate(Ss):
+        b = S["base"]; T = Transform.load(b / "03_registration" / "transform_full.npz")
+        X = T.grid_um(grid_um)
+        with torch.no_grad():
+            u = T.displacement(X).cpu().numpy()
+        Xn = X.cpu().numpy(); mag = np.hypot(u[..., 0], u[..., 1])
+        om = tifffile.imread(b / "03_registration" / "oct_tissue_mask_refined.tif") > 0
+        m = cv2.resize(om.astype(np.uint8), (mag.shape[1], mag.shape[0]), interpolation=cv2.INTER_NEAREST) > 0
+        ext = (0, T.ext_um[1] / 1000, T.ext_um[0] / 1000, 0)
+        ax = axs[0, i]; im = ax.imshow(np.where(m, mag, np.nan), cmap="magma", vmin=0, vmax=cap_um, extent=ext)
+        ax.set_facecolor("black"); ax.set_xticks([]); ax.set_yticks([]); ax.set_title(S["cfg"]["sample_id"], pad=2)
+        st = 24; q = np.s_[st // 2::st, st // 2::st]; mq = m[q]
+        ax.quiver(Xn[..., 0][q][mq] / 1000, Xn[..., 1][q][mq] / 1000, u[..., 0][q][mq], -u[..., 1][q][mq], color="w",
+                  angles="xy", scale_units="xy", scale=1000 / 10, width=0.009, headwidth=4)     # arrows x10
+        ax = axs[1, i]; ax.set_facecolor("white")
+        gx, gy = (Xn[..., 0] + 10 * u[..., 0]) / 1000, (Xn[..., 1] + 10 * u[..., 1]) / 1000
+        gs_ = 12
+        for k in range(0, gx.shape[0], gs_):
+            ax.plot(np.where(m[k], gx[k], np.nan), np.where(m[k], gy[k], np.nan), color="#3b1f4a", lw=0.45)
+        for k in range(0, gx.shape[1], gs_):
+            ax.plot(np.where(m[:, k], gx[:, k], np.nan), np.where(m[:, k], gy[:, k], np.nan), color="#3b1f4a", lw=0.45)
+        ax.set_xlim(ext[0], ext[1]); ax.set_ylim(ext[2], ext[3]); ax.set_aspect("equal"); ax.set_xticks([]); ax.set_yticks([])
+        for sp in ax.spines.values(): sp.set_visible(False)
+        mm = mag[m]; stats.append({"sample": S["cfg"]["sample_id"], "median_um": float(np.median(mm)), "p99_um": float(np.percentile(mm, 99)),
+                                   "max_um": float(mm.max()), "frac_gt50": float((mm > 50).mean())})
+    for ax, t in ((axs[0, 0], "a"), (axs[1, 0], "b")):
+        ax.text(-0.08, 1.02, t, transform=ax.transAxes, fontsize=9, fontweight="bold", va="bottom", ha="right")
+    axs[0, 0].set_ylabel("|u| (µm)"); axs[1, 0].set_ylabel("grid ×10")
+    cb = fig.colorbar(im, ax=axs[0, :].tolist(), fraction=0.02, pad=0.01, extend="max"); cb.set_label("displacement (µm)", fontsize=6); cb.ax.tick_params(labelsize=5)
+    fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
+    return stats
+
+
 def f2(v, d=2):
     return "--" if v is None else f"{v:.{d}f}"
 
@@ -299,6 +339,8 @@ def main():
     print("figures ..."); fig_pipeline(Ss[0], fd / "fig1_pipeline.png"); fig_overview(Ss, fd / "fig2_overview.png")
     fig_rois(Ss, fd / "fig3_rois.png"); fig_accuracy(Ss, fd / "fig4_accuracy.png")
     lm = fig_landmarks(Ss[0], fd / "fig5_landmarks.png")
+    dstats = fig_deformation(Ss, fd / "fig6_deformation.png")
+    (rep / "deformation_stats.json").write_text(json.dumps(dstats, indent=1))
     t1, t2 = tables(Ss); pa, pd = pooled(Ss, "affine"), pooled(Ss, "deformable")
     rd_med = np.median([S["qc"]["residual_deformable"]["median_um"] for S in Ss])
     dice = [S["qc"]["mask_dice_deformable"] for S in Ss]
@@ -309,6 +351,8 @@ def main():
             "POOLDEFMED": f"{pd['median']:.2f}", "POOLDEFP90": f"{pd['p90']:.1f}", "POOLDEFLT2": f"{100 * pd['lt2']:.0f}",
             "POOLDEFLT4": f"{100 * pd['lt4']:.0f}", "POOLAFFLT2": f"{100 * pa['lt2']:.0f}", "RESDEFMED": f"{rd_med:.2f}",
             "DICEMIN": f"{min(dice):.3f}", "DICEMAX": f"{max(dice):.3f}",
+            "DEFMEDS": ", ".join(f"{d['median_um']:.1f}" for d in dstats), "DEFP99MAX": f"{max(d['p99_um'] for d in dstats):.0f}",
+            "DEFGT50": f"{100 * max(d['frac_gt50'] for d in dstats):.1f}",
             "LMSAMPLE": Ss[0]["cfg"]["sample_id"].replace("_", r"\_"), "LMNTOT": str(lm["n_total"]), "LMNVIEW": str(lm["n_in_view"]),
             "EDGEMED": f"{np.median([(S['qc'].get('boundary_deformable') or {}).get('median_um', np.nan) for S in Ss]):.1f}",
             "HEPX": ", ".join(f"{S['meta']['inputs']['he']['pixel_size_um_estimated']:.3f}" for S in Ss),

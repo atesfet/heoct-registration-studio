@@ -387,7 +387,7 @@ consistency rather than ground-truth TRE; the zoomed ROIs are the visual check.<
 
 
 # ------------------------------------------------------------ independent landmark check
-def lumen_landmarks(img, mask, thr=0.1, erode_px=41, area_px=(15, 3000)):
+def lumen_landmarks(img, mask, thr=0.1, erode_px=41, area_px=(15, 3000), return_mask=False):
     """Centroids (y,x px) and areas of small dark lumens/gaps (vessels, clefts) inside tissue.
 
     In OCT these are low-scattering holes; in H&E optical density they are unstained gaps,
@@ -399,10 +399,12 @@ def lumen_landmarks(img, mask, thr=0.1, erode_px=41, area_px=(15, 3000)):
     b = cv2.morphologyEx(b.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     lab, n = ndi.label(b)
     if n == 0:
-        return np.zeros((0, 2)), np.zeros(0)
+        return (np.zeros((0, 2)), np.zeros(0), np.zeros_like(mask, bool)) if return_mask else (np.zeros((0, 2)), np.zeros(0))
     idx = np.arange(1, n + 1)
     a = ndi.sum(b, lab, idx); c = np.array(ndi.center_of_mass(b, lab, idx))
     k = (a >= area_px[0]) & (a <= area_px[1])
+    if return_mask:   # binary mask of the kept lumens (for figures)
+        return c[k], a[k], np.isin(lab, idx[k])
     return c[k], a[k]
 
 

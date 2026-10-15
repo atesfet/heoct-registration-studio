@@ -164,6 +164,102 @@ def fig_accuracy(Ss, path):
     fig.tight_layout(pad=0.4); fig.savefig(path, dpi=300); plt.close(fig)
 
 
+def fig_landmarks(S, path, win_um=500, sub_um=200, zoom_um=46):
+    """Explain the lumen-landmark TRE on real data: segmentation, matching, one pair, error distribution."""
+    from scipy.spatial import cKDTree
+    import matplotlib.patches as mpatches
+    b = S["base"]; px = float(S["meta"]["grids"]["oct_grid"]["pixel_size_um"])
+    o = tifffile.imread(b / "02_oct_preproc" / "oct_norm.tif")
+    om = tifffile.imread(b / "03_registration" / "oct_tissue_mask_refined.tif") > 0
+    hw = tifffile.imread(b / "03_registration" / "he_intensity_warped_deformable.tif")
+    he = out_img(S, "HE_registered_stainnorm")
+    co, ao, mo = qc.lumen_landmarks(o, om, return_mask=True)
+    ch, ah, mh = qc.lumen_landmarks(hw, om, return_mask=True)
+    pairs, st = qc.landmark_tre(o, hw, om, px)
+    pa = np.load(b / "04_qc" / "residuals" / "landmarks_affine.npz")["err_um"]
+    P_o, P_h, E = pairs["oct_yx_px"], pairs["he_yx_px"], pairs["err_um"]
+    # window with the most matched pairs
+    w = int(win_um / px); tree = cKDTree(P_o)
+    cnt = [len(tree.query_ball_point(p, w / 2, p=np.inf)) for p in P_o]
+    cy, cx = P_o[int(np.argmax(cnt))]
+    H, W = o.shape; y0 = int(np.clip(cy - w / 2, 0, H - w)); x0 = int(np.clip(cx - w / 2, 0, W - w))
+    sl = np.s_[y0:y0 + w, x0:x0 + w]
+    inw = lambda P: (P[:, 0] >= y0) & (P[:, 0] < y0 + w) & (P[:, 1] >= x0) & (P[:, 1] < x0 + w)
+    k = inw(P_o)
+
+    def label(ax, t):   # panel letter above-left of the title (titles here are long)
+        ax.text(-0.04, 1.13, t, transform=ax.transAxes, fontsize=9, fontweight="bold", va="bottom", ha="right")
+
+    def outlines(ax, m, col, lw=1.0):
+        cs, _ = cv2.findContours(m.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        for c in cs:
+            c = c[:, 0, :]; ax.plot(np.r_[c[:, 0], c[0, 0]], np.r_[c[:, 1], c[0, 1]], color=col, lw=lw)
+
+    fig = plt.figure(figsize=(7.2, 5.0))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1, 0.92], hspace=0.34, wspace=0.34)
+    oc = np.clip(o[sl], 0, 1)
+    # a: OCT lumens
+    ax = fig.add_subplot(gs[0, 0]); show(ax, oc, "OCT: dark lumens", cmap="gray", vmin=0, vmax=1)
+    outlines(ax, mo[sl], "#ff2bd6"); m = inw(co)
+    ax.plot(co[m, 1] - x0, co[m, 0] - y0, "+", color="#ff2bd6", ms=4, mew=0.8); label(ax, "a")
+    sw = int(sub_um / px); kk = np.flatnonzero(k)
+    t2 = cKDTree(P_o[kk]); c2 = [len(t2.query_ball_point(p, sw / 2, p=np.inf)) for p in P_o[kk]]
+    sy, sx = P_o[kk][int(np.argmax(c2))]
+    sy0 = int(np.clip(sy - sw / 2, y0, y0 + w - sw)); sx0 = int(np.clip(sx - sw / 2, x0, x0 + w - sw))
+    ax.add_patch(mpatches.Rectangle((sx0 - x0, sy0 - y0), sw, sw, fill=False, color="#ffd60a", lw=1))
+    scalebar(ax, px, 100, oc.shape)
+    # b: H&E lumens
+    ax = fig.add_subplot(gs[0, 1]); show(ax, he[sl], "registered H&E: unstained lumens")
+    outlines(ax, mh[sl], "#00b050"); m = inw(ch)
+    ax.plot(ch[m, 1] - x0, ch[m, 0] - y0, "+", color="#006b2f", ms=4, mew=0.8); label(ax, "b")
+    # c: matching, zoomed to the yellow box in (a) so that the few-um pair vectors are visible
+    ssl = np.s_[sy0:sy0 + sw, sx0:sx0 + sw]
+    insub = lambda P: (P[:, 0] >= sy0) & (P[:, 0] < sy0 + sw) & (P[:, 1] >= sx0) & (P[:, 1] < sx0 + sw)
+    ks = insub(P_o)
+    ax = fig.add_subplot(gs[0, 2]); show(ax, np.clip(o[ssl], 0, 1), f"matched pairs in box (n={int(ks.sum())}), vectors x5", cmap="gray", vmin=0, vmax=1)
+    outlines(ax, mo[ssl], "#ff2bd6", 0.8); outlines(ax, mh[ssl], "#00b050", 0.8)
+    cmap = plt.get_cmap("turbo")
+    for (yo, xo), (yh, xh), e in zip(P_o[ks], P_h[ks], E[ks]):
+        ex, ey = xo + 5 * (xh - xo), yo + 5 * (yh - yo)          # error vector exaggerated x5 for visibility
+        ax.annotate("", xy=(ex - sx0, ey - sy0), xytext=(xo - sx0, yo - sy0),
+                    arrowprops=dict(arrowstyle="-|>", color=cmap(min(e / 10, 1)), lw=1.4, mutation_scale=6))
+        ax.plot(xo - sx0, yo - sy0, ".", color="#ff2bd6", ms=3)
+    matched_o = {tuple(p) for p in np.round(P_o, 3)}
+    un = np.array([p for p in co[insub(co)] if tuple(np.round(p, 3)) not in matched_o]) if insub(co).any() else np.zeros((0, 2))
+    if len(un): ax.plot(un[:, 1] - sx0, un[:, 0] - sy0, "x", color="#ffd60a", ms=4, mew=1)
+    scalebar(ax, px, 50, (sw, sw))
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0, 10)); cb = fig.colorbar(sm, ax=ax, fraction=0.046, pad=0.02)
+    cb.set_label("pair error (µm)", fontsize=6); cb.ax.tick_params(labelsize=5); label(ax, "c")
+    # d: one pair, how the error is computed (median-error pair in the window)
+    ki = np.flatnonzero(k); j = ki[np.argsort(E[ki])[int(0.75 * (len(ki) - 1))]]   # 75th-percentile pair (visible arrow)
+    (yo, xo), (yh, xh), e = P_o[j], P_h[j], E[j]
+    z = int(zoom_um / px); zy0, zx0 = int(yo - z / 2), int(xo - z / 2); zs = np.s_[zy0:zy0 + z, zx0:zx0 + z]
+    ax = fig.add_subplot(gs[1, 0]); show(ax, np.clip(o[zs], 0, 1), "one pair: error = centroid distance", cmap="gray", vmin=0, vmax=1)
+    outlines(ax, mo[zs], "#ff2bd6", 1.4); outlines(ax, mh[zs], "#00b050", 1.4)
+    ax.plot(xo - zx0, yo - zy0, "o", color="#ff2bd6", ms=5, mec="w", mew=0.6); ax.plot(xh - zx0, yh - zy0, "o", color="#00b050", ms=5, mec="w", mew=0.6)
+    ax.annotate("", xy=(xh - zx0, yh - zy0), xytext=(xo - zx0, yo - zy0), arrowprops=dict(arrowstyle="-|>", color="#ffd60a", lw=1.6, mutation_scale=8))
+    ax.add_patch(mpatches.Circle((xo - zx0, yo - zy0), 20 / px, fill=False, ls="--", lw=0.8, color="#00e5ff"))
+    d2 = cKDTree(ch).query([yo, xo], k=2)[0][1] * px
+    ax.text(0.03, 0.97, f"d = {e:.1f} µm\n2nd nearest H&E = {d2:.0f} µm\nratio {e / d2:.2f} < 0.5 ✓", transform=ax.transAxes, va="top",
+            fontsize=6, color="w", bbox=dict(boxstyle="round,pad=0.25", fc=(0, 0, 0, .55), ec="none"))
+    ax.text(0.03, 0.03, "cyan: 20 µm search radius", transform=ax.transAxes, fontsize=5.5, color="#00e5ff"); label(ax, "d")
+    # e: rules + distribution
+    ax = fig.add_subplot(gs[1, 1]); bins = np.arange(0, 20.5, 0.5)
+    ax.hist(pa, bins=bins, color="#9aa5b1", alpha=.8, label=f"affine (median {np.median(pa):.2f} µm)")
+    ax.hist(E, bins=bins, color="#1f6feb", alpha=.8, label=f"deformable (median {np.median(E):.2f} µm)")
+    ax.axvline(2, color="k", lw=0.6, ls="--"); ax.text(2.3, ax.get_ylim()[1] * 0.55, "1 OCT\npixel", fontsize=5.5)
+    ax.set_xlabel("landmark error (µm)"); ax.set_ylabel("matched lumens", labelpad=1); ax.legend(frameon=False, fontsize=5.5, loc="upper right")
+    ax.set_title(f"all {len(E)} pairs, {S['cfg']['sample_id']}"); label(ax, "e")
+    for sp_ in ("top", "right"): ax.spines[sp_].set_visible(False)
+    # f: where the landmarks are
+    ax = fig.add_subplot(gs[1, 2]); f = 0.12; bg = cv2.resize(np.clip(o, 0, 1), None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
+    show(ax, bg, "all landmarks (box = a)", cmap="gray", vmin=0, vmax=1)
+    ax.scatter(P_o[:, 1] * f, P_o[:, 0] * f, c=np.minimum(E, 10), cmap="turbo", vmin=0, vmax=10, s=1.2, lw=0)
+    ax.add_patch(mpatches.Rectangle((x0 * f, y0 * f), w * f, w * f, fill=False, color="#ffd60a", lw=1)); label(ax, "f")
+    fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
+    return {"n_in_view": int(k.sum()), "n_total": len(E), "pair_err": float(e), "pair_d2": float(d2)}
+
+
 def f2(v, d=2):
     return "--" if v is None else f"{v:.{d}f}"
 
@@ -202,6 +298,7 @@ def main():
     rep = io.aux_root(Ss[0]["cfg"]) / "report"; fd = rep / "figures"; fd.mkdir(parents=True, exist_ok=True)
     print("figures ..."); fig_pipeline(Ss[0], fd / "fig1_pipeline.png"); fig_overview(Ss, fd / "fig2_overview.png")
     fig_rois(Ss, fd / "fig3_rois.png"); fig_accuracy(Ss, fd / "fig4_accuracy.png")
+    lm = fig_landmarks(Ss[0], fd / "fig5_landmarks.png")
     t1, t2 = tables(Ss); pa, pd = pooled(Ss, "affine"), pooled(Ss, "deformable")
     rd_med = np.median([S["qc"]["residual_deformable"]["median_um"] for S in Ss])
     dice = [S["qc"]["mask_dice_deformable"] for S in Ss]
@@ -212,6 +309,7 @@ def main():
             "POOLDEFMED": f"{pd['median']:.2f}", "POOLDEFP90": f"{pd['p90']:.1f}", "POOLDEFLT2": f"{100 * pd['lt2']:.0f}",
             "POOLDEFLT4": f"{100 * pd['lt4']:.0f}", "POOLAFFLT2": f"{100 * pa['lt2']:.0f}", "RESDEFMED": f"{rd_med:.2f}",
             "DICEMIN": f"{min(dice):.3f}", "DICEMAX": f"{max(dice):.3f}",
+            "LMSAMPLE": Ss[0]["cfg"]["sample_id"].replace("_", r"\_"), "LMNTOT": str(lm["n_total"]), "LMNVIEW": str(lm["n_in_view"]),
             "EDGEMED": f"{np.median([(S['qc'].get('boundary_deformable') or {}).get('median_um', np.nan) for S in Ss]):.1f}",
             "HEPX": ", ".join(f"{S['meta']['inputs']['he']['pixel_size_um_estimated']:.3f}" for S in Ss),
             "MIRRORED": ", ".join(S["cfg"]["sample_id"].replace("_", r"\_") for S in Ss if S["qc"]["orientation"]["mirrored"]) or "none"}

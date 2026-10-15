@@ -359,6 +359,7 @@ def _sample_summary(d: Path) -> dict | None:
             "tre_aff_med": la.get("median_um"), "tre_med": lt.get("median_um"), "tre_p90": lt.get("p90_um"), "tre_n": lt.get("n_matched"),
             "tre_lt2": lt.get("frac_below_2um"), "resid_med": rd.get("median_um"),
             "dice": (acc.get("mask_dice") or {}).get("deformable"),
+            "edge_med": ((acc.get("tissue_edge_distance") or {}).get("deformable") or {}).get("median_um"),
             "oct_shape": m["grids"]["oct_grid"]["shape_rows_cols"], "he_path": m["inputs"]["he"]["path"], "oct_path": m["inputs"]["oct"]["path"]}
 
 

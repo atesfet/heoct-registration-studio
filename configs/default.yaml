@@ -25,6 +25,11 @@ oct:
   open_um: 20
   body_open_um: 240           # bridges narrower than ~2x this to neighbouring pieces/debris are cut
   min_component_frac: 0.25
+  edge_refine: true           # grow the mask back to the true tissue edge so the epidermis is kept (see refine_edge)
+  edge_sigma_um: 8            # fine texture scale used at the edge
+  edge_max_dark: 0.5
+  edge_open_um: 10            # cuts thin bridges to detached fragments
+  edge_grow_um: 200           # max distance the edge may move outwards (epidermis + stratum corneum < ~150 um)
   tile_size_px: 350           # acquisition patch size (from metadata)
   flatfield: true
   clip_percentiles: [0.5, 99.5]

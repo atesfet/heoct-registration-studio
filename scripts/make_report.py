@@ -175,6 +175,7 @@ def tables(Ss):
         la, ld = q["landmark_affine"], q["landmark_deformable"]
         ra, rd = q["residual_affine"], q["residual_deformable"]
         t1.append(f"{S['cfg']['sample_id'].replace('_', chr(92) + '_')} & {f2(q['mask_dice_affine'], 3)} & {f2(q['mask_dice_deformable'], 3)} & "
+                  f"{f2((q.get('boundary_deformable') or {}).get('median_um'), 1)} & "
                   f"{ld['n_matched']} & {f2(la['median_um'])} & {f2(ld['median_um'])} & {f2(ld['p90_um'])} & {100 * ld['frac_below_2um']:.0f} & "
                   f"{100 * ld['frac_below_4um']:.0f} & {f2(ra['median_um'])} & {f2(rd['median_um'])} & {f2(rd['p90_um'])} \\\\")
     t2 = []
@@ -211,6 +212,7 @@ def main():
             "POOLDEFMED": f"{pd['median']:.2f}", "POOLDEFP90": f"{pd['p90']:.1f}", "POOLDEFLT2": f"{100 * pd['lt2']:.0f}",
             "POOLDEFLT4": f"{100 * pd['lt4']:.0f}", "POOLAFFLT2": f"{100 * pa['lt2']:.0f}", "RESDEFMED": f"{rd_med:.2f}",
             "DICEMIN": f"{min(dice):.3f}", "DICEMAX": f"{max(dice):.3f}",
+            "EDGEMED": f"{np.median([(S['qc'].get('boundary_deformable') or {}).get('median_um', np.nan) for S in Ss]):.1f}",
             "HEPX": ", ".join(f"{S['meta']['inputs']['he']['pixel_size_um_estimated']:.3f}" for S in Ss),
             "MIRRORED": ", ".join(S["cfg"]["sample_id"].replace("_", r"\_") for S in Ss if S["qc"]["orientation"]["mirrored"]) or "none"}
     for k, v in subs.items():

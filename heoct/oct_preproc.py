@@ -79,8 +79,47 @@ def tissue_mask(oct_img: np.ndarray, cfg: dict) -> tuple[np.ndarray, dict]:
     m = ndi.binary_fill_holes(fg)
     full = cv2.resize(m.astype(np.uint8) * 255, (oct_img.shape[1], oct_img.shape[0]), interpolation=cv2.INTER_LINEAR) > 127
     full &= finite | ndi.binary_fill_holes(finite)   # never extend beyond the reconstructed footprint
-    return full, {"split": split_info, "work_downsample": k, "dark_db": cfg["dark_db"], "max_dark_frac": cfg["max_dark_frac"],
+    edge_info = {}
+    if cfg.get("edge_refine", True):
+        full, edge_info = refine_edge(oct_img, full, cfg)
+    return full, {"edge_refine": edge_info, "split": split_info, "work_downsample": k, "dark_db": cfg["dark_db"], "max_dark_frac": cfg["max_dark_frac"],
                   "body_open_um": cfg["body_open_um"]}
+
+
+def refine_edge(oct_img: np.ndarray, coarse: np.ndarray, cfg: dict) -> tuple[np.ndarray, dict]:
+    """Grow the coarse tissue mask back out to the true tissue boundary (keeps the epidermis).
+
+    The coarse mask uses a ~160 um texture scale, so its edge sits ~50-110 um inside the tissue and would cut off the
+    bright epidermis / stratum corneum at the rim. Here a fine-scale tissue map (local dark fraction at ~8 um) is
+    added back wherever it lies within edge_grow_um of the coarse mask and is connected to it; a small opening first cuts
+    thin bridges to detached fragments. The coarse mask still decides WHICH tissue is the section.
+    """
+    px = float(cfg.get("px_um", 2.0))
+    finite = np.isfinite(oct_img)
+    v = np.nan_to_num(oct_img, nan=0.0)
+    fr = cv2.GaussianBlur(((v < cfg["dark_db"]) | ~finite).astype(np.float32), (0, 0), cfg.get("edge_sigma_um", 8) / px)
+    fine = finite & (fr < cfg.get("edge_max_dark", 0.5))
+    fine = cv2.morphologyEx(fine.astype(np.uint8), cv2.MORPH_OPEN, _disk(max(1, int(round(cfg.get("edge_open_um", 10) / px))))).astype(bool)
+    k = 4
+    R = max(1, int(round(cfg.get("edge_grow_um", 200) / px / k)))
+    cs = cv2.resize(coarse.astype(np.uint8), (coarse.shape[1] // k, coarse.shape[0] // k), interpolation=cv2.INTER_NEAREST)
+    allow = cv2.resize(cv2.dilate(cs, _disk(R)), (coarse.shape[1], coarse.shape[0]), interpolation=cv2.INTER_NEAREST) > 0
+    m = (fine & allow) | coarse
+    lab, _ = ndi.label(m)
+    keep = np.unique(lab[coarse]); keep = keep[keep > 0]
+    m = ndi.binary_fill_holes(np.isin(lab, keep))
+    # QC: gap between the reconstruction footprint edge and the mask edge (should be a few um)
+    foot = ndi.binary_fill_holes(keep_large_components(finite, 0.25))
+    edge = foot & ~cv2.erode(foot.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+    def gap(mask):
+        d = ndi.distance_transform_edt(~mask)[edge] * px
+        d = d[d < 600]
+        return (float(np.median(d)), float(np.percentile(d, 90))) if d.size else (None, None)
+    g0, g1 = gap(coarse), gap(m)
+    info = {"added_px": int((m & ~coarse).sum()), "added_area_mm2": float((m & ~coarse).sum() * px * px / 1e6),
+            "edge_gap_um_before": {"median": g0[0], "p90": g0[1]}, "edge_gap_um_after": {"median": g1[0], "p90": g1[1]},
+            "note": "edge gap = distance from the OCT reconstruction footprint edge to the mask edge (footprint parts > 600 um away ignored)"}
+    return m, info
 
 
 def split_touching_pieces(fg: np.ndarray, neck_ratio: float) -> tuple[np.ndarray, dict]:

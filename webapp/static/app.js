@@ -191,9 +191,9 @@ async function loadResults() {
     tb.innerHTML = r.samples.length ? r.samples.map((s, i) => `<tr data-dir="${esc(s.dir)}">
       <td><b>${esc(s.sample_id)}</b></td><td>${s.mirrored ? "yes" : "no"}</td><td class="num">${f2(s.rotation_deg, 1)}</td><td class="num">${f2(s.he_px_um, 3)}</td>
       <td class="num">${f2(s.tre_aff_med)}</td><td class="num ${s.tre_med <= 3 ? "good" : "meh"}">${f2(s.tre_med)}</td><td class="num">${f2(s.tre_p90, 1)}</td>
-      <td class="num">${s.tre_lt2 == null ? "–" : Math.round(100 * s.tre_lt2) + "%"}</td><td class="num">${f2(s.resid_med)}</td><td class="num">${f2(s.dice, 4)}</td>
+      <td class="num">${s.tre_lt2 == null ? "–" : Math.round(100 * s.tre_lt2) + "%"}</td><td class="num">${f2(s.resid_med)}</td><td class="num">${f2(s.edge_med, 1)}</td><td class="num">${f2(s.dice, 4)}</td>
       <td><button class="sm" data-view="${i}">View</button></td></tr>`).join("")
-      : `<tr><td colspan="11" class="muted">no registered samples (folders with output/*_metadata.json) under this folder</td></tr>`;
+      : `<tr><td colspan="12" class="muted">no registered samples (folders with output/*_metadata.json) under this folder</td></tr>`;
     tb.querySelectorAll("[data-view]").forEach((b) => (b.onclick = () => openResult(r.samples[+b.dataset.view].dir)));
     const rl = $("report-link"); rl.classList.toggle("hidden", !r.report_pdf); if (r.report_pdf) rl.href = fileUrl(r.report_pdf);
   } catch (e) { toast(e.message, true); }
@@ -210,7 +210,7 @@ async function openResult(dir) {
     const lt = r.landmark.deformable || {}, la = r.landmark.affine || {};
     const kv = [["Landmark TRE (deformable)", `${f2(lt.median_um)} µm median · p90 ${f2(lt.p90_um, 1)}`], ["Landmark TRE (affine)", `${f2(la.median_um)} µm`],
                 ["Landmarks < 2 µm", lt.frac_below_2um == null ? "–" : `${Math.round(100 * lt.frac_below_2um)} % (n=${lt.n_matched})`],
-                ["Patch residual", `${f2((r.residual.deformable || {}).median_um)} µm median`], ["Tissue Dice", f2(s.dice, 4)],
+                ["Patch residual", `${f2((r.residual.deformable || {}).median_um)} µm median`], ["Tissue-edge distance (rim/epidermis)", `${f2(s.edge_med, 1)} µm median`],
                 ["Orientation", `${s.mirrored ? "mirrored, " : ""}${f2(s.rotation_deg, 1)}°`], ["H&E pixel (est.)", `${f2(s.he_px_um, 3)} µm`],
                 ["Non-rigid displacement", r.deformation ? `${f2(r.deformation.median_um, 1)} µm median · max ${f2(r.deformation.max_um, 0)}` : "–"]];
     $("viewer-metrics").innerHTML = kv.map(([k, v]) => `<div class="kv"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join("");

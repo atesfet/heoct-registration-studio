@@ -118,6 +118,7 @@ def run(cfg: dict) -> None:
                           "oct": {k: ocp[k] for k in ("threshold_db", "clip_db", "mask_fraction", "removed_debris_fraction", "flatfield_pattern_range_db", "params") if k in ocp}},
         "registration_params": cfg["registration"],
         "accuracy": {"mask_dice": {k: qc.get(f"mask_dice_{k}") for k in ("affine", "deformable")},
+                     "tissue_edge_distance": {k: qc.get(f"boundary_{k}") for k in ("affine", "deformable")},
                      "landmark_tre": {k: qc.get(f"landmark_{k}") for k in ("affine", "deformable")},
                      "residual_block_matching": {k: qc.get(f"residual_{k}") for k in ("affine", "deformable")}},
         "software": {"python": platform.python_version(), "torch": torch.__version__, "opencv": cv2.__version__,

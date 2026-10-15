@@ -68,6 +68,26 @@ def contour_overlay(img_rgb, mask_a, mask_b, th=2):
     return out
 
 
+def boundary_distance(mask_a, mask_b, px_um, frame_margin_px=10):
+    """Edge-to-edge distance (um) between two tissue masks, both directions, ignoring edges on the image frame.
+
+    Directly measures rim (epidermis) alignment; mask Dice is insensitive to a thin rim offset.
+    """
+    from scipy import ndimage as ndi
+    H, W = mask_a.shape
+    inner = np.zeros_like(mask_a, bool); inner[frame_margin_px:H - frame_margin_px, frame_margin_px:W - frame_margin_px] = True
+    def edge(m):
+        return m & ~(cv2.erode(m.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0) & inner
+    ea, eb = edge(mask_a), edge(mask_b)
+    if not ea.any() or not eb.any():
+        return {}
+    da = ndi.distance_transform_edt(~eb)[ea] * px_um     # OCT edge -> nearest H&E edge
+    db = ndi.distance_transform_edt(~ea)[eb] * px_um
+    d = np.concatenate([da, db])
+    return {"median_um": float(np.median(d)), "mean_um": float(d.mean()), "p90_um": float(np.percentile(d, 90)),
+            "frac_below_10um": float((d < 10).mean()), "oct_to_he_median_um": float(np.median(da)), "he_to_oct_median_um": float(np.median(db))}
+
+
 def ds(img, f):
     return cv2.resize(img, None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
 
@@ -289,9 +309,11 @@ def run(cfg: dict) -> None:
         io.save_png(ov / f"{tag}_04_falsecolor.png", ds(false_color(hi, o), f))
         io.save_png(ov / f"{tag}_05_mask_contours.png", ds(contour_overlay(blend(he, o), om, hm, 6), f))
         inter = (om & hm).sum(); report[f"mask_dice_{tag}"] = float(2 * inter / (om.sum() + hm.sum()))
+        report[f"boundary_{tag}"] = boundary_distance(om, hm, px)
     io.save_png(ov / "oct_reference.png", ds(oct_rgb(o), f))
     report["deformation"] = deformation_figure(T_def, om, px, ov / "deformation_field.png")
     log.info(f"mask dice affine {report['mask_dice_affine']:.4f} deformable {report['mask_dice_deformable']:.4f}")
+    log.info(f"tissue-edge distance affine {report['boundary_affine']}  deformable {report['boundary_deformable']}")
 
     # 2. residual misalignment maps
     rs = out / "residuals"; rs.mkdir(exist_ok=True)

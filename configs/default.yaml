@@ -1,6 +1,6 @@
 # Default parameters for H&E (moving) -> OCT (fixed) 2D registration.
 # Per-sample files in configs/samples/<sample>.yaml override any key here (deep merge).
-output_root: /home/adlz/atesfet/dev/data_12um_registered
+output_root: /media/adlz/dataNAS/atesfet/data/data_12um_registered
 aux_root: /home/adlz/atesfet/dev/registration/v1   # cross-sample report/ and figures/ (null = output_root)
 
 he:
@@ -75,5 +75,6 @@ qc:
   n_auto_rois: 8
   roi_size_um: 700
   manual_rois_um: []          # optional [[x_um, y_um], ...] centres in OCT space
+  oct_lumen_db: 2.6           # OCT lumen = signal <= this many dB above noise floor (absolute; same for all samples)
   residual_patch_um: 400
   residual_search_um: 40

@@ -326,8 +326,12 @@ def run(cfg: dict) -> None:
         log.info(f"residual {tag}: {st}")
 
     # 2b. independent lumen-landmark TRE
+    oct_db_lumen = np.nan_to_num(tifffile.imread(d2 / "oct_clean_db.tif"), nan=0.0).astype(np.float32)
     for tag in ("affine", "deformable"):
-        pairs, st = landmark_tre(o, data[f"int_{tag[:3]}"], om, px)
+        # OCT lumens = flat-fielded signal <= qc.oct_lumen_db dB above the noise floor: an absolute, physical threshold,
+        # identical for every sample and independent of the display/registration standardisation
+        pairs, st = landmark_tre(oct_db_lumen, data[f"int_{tag[:3]}"], om, px, oct_thr=q.get("oct_lumen_db", 2.6))
+        st["oct_lumen_threshold_db"] = q.get("oct_lumen_db", 2.6)
         report[f"landmark_{tag}"] = st
         np.savez(rs / f"landmarks_{tag}.npz", **pairs)
         log.info(f"landmark TRE {tag}: {st}")
@@ -408,7 +412,7 @@ def lumen_landmarks(img, mask, thr=0.1, erode_px=41, area_px=(15, 3000), return_
     return c[k], a[k]
 
 
-def landmark_tre(o, he_int_warped, mask, px_um, max_dist_px=10, min_size_ratio=0.3, ratio=0.5):
+def landmark_tre(o, he_int_warped, mask, px_um, max_dist_px=10, min_size_ratio=0.3, ratio=0.5, oct_thr=0.1):
     """Lumen-centroid matching -> independent TRE (um).
 
     A pair (OCT i, H&E j) is accepted if i and j are mutual nearest neighbours within max_dist_px,
@@ -416,7 +420,7 @@ def landmark_tre(o, he_int_warped, mask, px_um, max_dist_px=10, min_size_ratio=0
     nearest / second-nearest distance < ratio), which rejects chance pairings in lumen-dense regions.
     """
     from scipy.spatial import cKDTree
-    co, ao = lumen_landmarks(o, mask); ch, ah = lumen_landmarks(he_int_warped, mask)
+    co, ao = lumen_landmarks(o, mask, thr=oct_thr); ch, ah = lumen_landmarks(he_int_warped, mask)
     if len(co) < 2 or len(ch) < 2:
         return {}, {"n_matched": 0}
     th, to = cKDTree(ch), cKDTree(co)

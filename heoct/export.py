@@ -35,6 +35,14 @@ def write_calibrated_tif(path: Path, arr: np.ndarray, px_um: float, meta_json: s
                      extratags=[(65000, "s", 0, meta_json, True)], compression="zlib")
 
 
+def oct_standardize(db: np.ndarray, mask: np.ndarray, ocp: dict) -> np.ndarray:
+    """Apply the sample's robust OCT standardisation (stage 02 parameters) to a dB image; 0 outside the mask."""
+    c = ocp["clip_db"]
+    z = np.clip((np.nan_to_num(db, nan=c[0]) - c[0]) / (c[1] - c[0]), 0, 1).astype(np.float32)
+    z[~mask] = 0
+    return z
+
+
 def run(cfg: dict) -> None:
     root = Path(cfg["output_root"]) / cfg["sample_id"]
     out = root / "output"; out.mkdir(parents=True, exist_ok=True)
@@ -50,6 +58,7 @@ def run(cfg: dict) -> None:
     interp = cfg["output"]["interpolation"]
 
     oct_raw, oct_meta = io.load_oct(cfg["oct_path"])
+    ocp = json.loads((d2 / "oct_preproc_info.json").read_text())
     oct_clean = tifffile.imread(d2 / "oct_clean_db.tif")
     oct_clean = np.where(tifffile.imread(d3 / "oct_tissue_mask_refined.tif") > 0, oct_clean, np.nan).astype(np.float32)
     oct_mask = tifffile.imread(d3 / "oct_tissue_mask_refined.tif") > 0
@@ -65,6 +74,7 @@ def run(cfg: dict) -> None:
         hn = R.warp_image(he_norm, T, True, mode=interp, fill=255.0, spacing_um=sp)
         hb = R.warp_image(he_bg, T, True, mode=interp, fill=255.0, spacing_um=sp)
         hm = R.warp_image(he_mask.astype(np.float32), T, True, mode="bilinear", spacing_um=sp) > 0.5
+        hn[~hm] = 255; hb[~hm] = 255          # background exactly white outside the registered H&E mask (no edge fringe)
         if gname == "oct_grid":
             oc, om = oct_clean, oct_mask
         else:
@@ -73,6 +83,8 @@ def run(cfg: dict) -> None:
         common = om & hm
         products[gname] = {
             f"{sid}_OCT_dB_{gname}.tif": (oc.astype(np.float32), "OCT en-face (top-k) intensity in dB above noise floor; tile flat-field corrected; NaN = background/debris removed"),
+            f"{sid}_OCT_standardized_{gname}.tif": (oct_standardize(oc, om, ocp), "OCT standardised for ML, same definition for every sample: "
+                                                    "(dB - tissue median) / (k * IQR) + 0.5, clipped to [0, 1]; 0 outside the OCT tissue mask (use the masks)"),
             f"{sid}_HE_registered_stainnorm_{gname}.tif": (hn, "H&E, background removed (white) + Macenko stain-normalised, deformably registered to OCT"),
             f"{sid}_HE_registered_original_{gname}.tif": (hb, "H&E, background removed (white), original colours, deformably registered to OCT"),
             f"{sid}_mask_common_{gname}.tif": ((common * 255).astype(np.uint8), "common tissue mask = OCT tissue mask AND registered H&E tissue mask (255 = tissue)"),
@@ -114,8 +126,8 @@ def run(cfg: dict) -> None:
                       "affine_total_A_hepx_per_um": A.tolist(), "affine_total_t_hepx": T.total_affine()[1].tolist(),
                       "deform_ctrl_spacings_um": [s for s, _ in T.ctrl], "init": reg.get("init"), "affine": reg.get("affine"),
                       "interpolation_output": interp},
-        "preprocessing": {"he": {k: hep[k] for k in ("background_rgb", "tissue_fraction", "stain_matrix_he_columns", "max_concentration", "ref_he", "ref_max_c", "params") if k in hep},
-                          "oct": {k: ocp[k] for k in ("threshold_db", "clip_db", "mask_fraction", "removed_debris_fraction", "flatfield_pattern_range_db", "params") if k in ocp}},
+        "preprocessing": {"he": {k: hep[k] for k in ("background_rgb", "tissue_fraction", "stain_matrix_he_columns", "max_concentration", "stain_fit_outlier_frac", "ref_he", "ref_max_c", "params") if k in hep},
+                          "oct": {k: ocp[k] for k in ("standardization", "clip_db", "mask_fraction", "removed_debris_fraction", "flatfield_pattern_range_db", "params") if k in ocp}},
         "registration_params": cfg["registration"],
         "accuracy": {"mask_dice": {k: qc.get(f"mask_dice_{k}") for k in ("affine", "deformable")},
                      "tissue_edge_distance": {k: qc.get(f"boundary_{k}") for k in ("affine", "deformable")},

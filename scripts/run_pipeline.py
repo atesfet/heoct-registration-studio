@@ -79,11 +79,18 @@ def stage02(cfg):
     log.info("done")
 
 
-def he_intensity_for_registration(stain_rgb, mask):
-    """Total optical density of stain-normalised H&E, scaled to ~[0,1]; 0 = background."""
+def he_intensity_for_registration(stain_rgb, mask, sn_cfg=None):
+    """Total optical density of stain-normalised H&E, scaled to ~[0,1]; 0 = background.
+
+    The scale (99.5th percentile) is taken over stain pixels only: ink, debris and folds (he_preproc.stain_outliers)
+    are excluded from it and simply saturate at 1, so they cannot compress the rest of the tissue.
+    """
+    from heoct.he_preproc import stain_outliers
     od = -np.log(np.clip(stain_rgb.astype(np.float32), 1, None) / 255.0).sum(-1)
     od[~mask] = 0
-    return np.clip(od / np.percentile(od[mask], 99.5), 0, 1).astype(np.float32)
+    ref = mask.copy()
+    ref[mask] = ~stain_outliers(stain_rgb[mask], np.array([255.0, 255.0, 255.0]), sn_cfg or {})
+    return np.clip(od / np.percentile(od[ref if ref.any() else mask], 99.5), 0, 1).astype(np.float32)
 
 
 def stage03(cfg):
@@ -98,7 +105,7 @@ def stage03(cfg):
     oct_norm = tifffile.imread(d2 / "oct_norm.tif")
     oct_mask = tifffile.imread(d2 / "oct_tissue_mask.tif") > 0
     px = float(json.loads((d2 / "oct_preproc_info.json").read_text())["px_um"])
-    he_int = he_intensity_for_registration(he_rgb, he_mask)
+    he_int = he_intensity_for_registration(he_rgb, he_mask, cfg["he"]["stain_norm"])
     tifffile.imwrite(out / "he_registration_intensity.tif", he_int, compression="zlib")
     rc = cfg["registration"]
     reg = R.Registrar(oct_norm, oct_mask, px, he_int, he_mask, rc, log)

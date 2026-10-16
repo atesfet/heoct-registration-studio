@@ -164,12 +164,24 @@ def run(oct_img: np.ndarray, cfg: dict) -> dict:
     pattern = np.zeros((1, 1), np.float32)
     if cfg["flatfield"]:
         img, pattern = tile_flatfield(img, mask & finite, cfg["tile_size_px"])
-    lo, hi = np.percentile(img[mask & finite], cfg["clip_percentiles"])
+    v = img[mask & finite]
+    q1, med, q3 = np.percentile(v, [25, 50, 75]); iqr = max(float(q3 - q1), 1e-3)
+    if cfg.get("standardize", "robust") == "robust":
+        # same definition for every sample: tissue median -> 0.5, +/- k/2 IQR -> 0 / 1; insensitive to saturated
+        # tiles, specular spots and debris, which used to set the 99.5th-percentile end point
+        k = float(cfg.get("robust_k_iqr", 4.0))
+        lo, hi = med - k / 2 * iqr, med + k / 2 * iqr
+    else:
+        lo, hi = np.percentile(v, cfg["clip_percentiles"])
     norm = np.clip((img - lo) / (hi - lo), 0, 1)
     norm[~mask] = 0
     clean = img.copy()
     clean[~mask] = np.nan
-    info = {"mask": minfo, "clip_db": [float(lo), float(hi)], "mask_fraction": float(mask.mean()),
+    nv = norm[mask & finite]
+    info = {"mask": minfo, "clip_db": [float(lo), float(hi)],
+            "standardization": {"method": cfg.get("standardize", "robust"), "median_db": float(med), "iqr_db": iqr,
+                                "norm_median": float(np.median(nv)), "frac_clipped_low": float((nv <= 0).mean()),
+                                "frac_clipped_high": float((nv >= 1).mean())}, "mask_fraction": float(mask.mean()),
             "finite_fraction": float(finite.mean()),
             "removed_debris_fraction": float((finite & ~mask).mean()),
             "flatfield_pattern_range_db": [float(pattern.min()), float(pattern.max())]}

@@ -16,6 +16,10 @@ he:
     beta: 0.15
     ref_he: [[0.5626, 0.2159], [0.7201, 0.8012], [0.4062, 0.5581]]   # Macenko reference
     ref_max_c: [1.9705, 1.0308]
+    exclude_outliers: true    # ignore ink/debris/folds when fitting (see he_preproc.stain_outliers)
+    neutral_cos: 0.985        # OD direction this close to grey = colourless
+    neutral_min_od: 1.0       # ...and this dark (summed OD)
+    max_od: 5.0               # or darker than any real stain
 
 oct:
   # texture-based tissue mask (see heoct/oct_preproc.py::tissue_mask)
@@ -33,7 +37,9 @@ oct:
   edge_grow_um: 200           # max distance the edge may move outwards (epidermis + stratum corneum < ~150 um)
   tile_size_px: 350           # acquisition patch size (from metadata)
   flatfield: true
-  clip_percentiles: [0.5, 99.5]
+  standardize: robust         # robust: median -> 0.5, +/- robust_k_iqr/2 IQR -> 0/1 (same for every sample); percentile: legacy
+  robust_k_iqr: 4.0
+  clip_percentiles: [0.5, 99.5]   # only used with standardize: percentile
 
 registration:
   fixed: oct                  # H&E is warped onto OCT

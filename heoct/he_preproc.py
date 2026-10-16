@@ -100,6 +100,18 @@ def macenko_apply(rgb: np.ndarray, mask: np.ndarray, io: np.ndarray, he: np.ndar
     return out.reshape(h, w, 3), ch[:, 0].reshape(h, w), ch[:, 1].reshape(h, w)
 
 
+def stain_outliers(rgb_pixels: np.ndarray, io: np.ndarray, cfg: dict) -> np.ndarray:
+    """Pixels that must not steer the stain fit: colourless dark (ink, debris, folds) or implausibly dark.
+
+    Neutral = OD direction within acos(neutral_cos) of grey (1,1,1); H and E are ~15-22 deg away from grey.
+    Without this, black ink inflates the 99th-percentile hematoxylin concentration and washes out the result.
+    """
+    od = _od(rgb_pixels, io)
+    tot = od.sum(1)
+    cos_grey = tot / np.sqrt(3) / np.maximum(np.linalg.norm(od, axis=1), 1e-6)
+    return ((cos_grey > cfg.get("neutral_cos", 0.985)) & (tot > cfg.get("neutral_min_od", 1.0))) | (tot > cfg.get("max_od", 5.0))
+
+
 def run(rgb: np.ndarray, cfg: dict, rng_seed: int = 0) -> dict:
     mask, raw, info = tissue_mask(rgb, cfg)
     io = info["background_rgb"]
@@ -107,10 +119,12 @@ def run(rgb: np.ndarray, cfg: dict, rng_seed: int = 0) -> dict:
     idx = np.flatnonzero(raw.reshape(-1))
     idx = rng.choice(idx, size=min(idx.size, 1_000_000), replace=False)
     sn = cfg["stain_norm"]
-    he, max_c = macenko_fit(rgb.reshape(-1, 3)[idx], io, sn["alpha"], sn["beta"])
+    px = rgb.reshape(-1, 3)[idx]
+    out = stain_outliers(px, io, sn) if sn.get("exclude_outliers", True) else np.zeros(len(px), bool)
+    he, max_c = macenko_fit(px[~out], io, sn["alpha"], sn["beta"])
     norm, hc, ec = macenko_apply(rgb, mask, io, he, max_c, np.array(sn["ref_he"]), np.array(sn["ref_max_c"]))
     bgrem = rgb.copy()
     bgrem[~mask] = 255
-    info |= {"stain_matrix_he_columns": he, "max_concentration": max_c,
+    info |= {"stain_matrix_he_columns": he, "max_concentration": max_c, "stain_fit_outlier_frac": float(out.mean()),
              "ref_he": sn["ref_he"], "ref_max_c": sn["ref_max_c"]}
     return {"mask": mask, "bg_removed": bgrem, "stain_norm": norm, "hema": hc, "eosin": ec, "info": info}
